@@ -91,6 +91,7 @@ jobs:
         run: |
           printf 'package buildinfo\nfunc init() { SourceSHA = "%s" }\n' "$GITHUB_SHA" > internal/buildinfo/stamp.go
           go build -trimpath -o /tmp/pushgo-worker ./cmd/worker
+          python3 scripts/pair-prepare.py
           python3 scripts/host-smoke.py
       - uses: actions/upload-artifact@v4
         if: always()

@@ -286,6 +286,6 @@ func (w *Worker) result(ctx context.Context, j job, state, message string, resul
 	if len(result) > 0 {
 		ack = string(result)
 	}
-	_, err := w.DB.Exec(ctx, "UPDATE jobs SET state=$1,last_error=$2,gateway_result=$3::jsonb,next_attempt=NOW()+($4*INTERVAL '1 second'),lease_owner=NULL,lease_until=NULL,updated_at=NOW() WHERE id=$5 AND lease_owner=$6 AND generation=$7 AND state='sending'", state, message, ack, delay.Seconds(), j.ID, j.Owner, j.Generation)
+	_, err := w.DB.Exec(ctx, "UPDATE jobs SET state=$1,last_error=$2,gateway_result=$3::jsonb,next_attempt=NOW()+($4*INTERVAL '1 second'),lease_owner=NULL,lease_until=NULL,updated_at=NOW() WHERE id=$5 AND lease_owner=$6 AND generation=$7 AND (state='sending' OR ($1='gateway_accepted' AND state IN ('superseded','cancelled')))", state, message, ack, delay.Seconds(), j.ID, j.Owner, j.Generation)
 	return err
 }

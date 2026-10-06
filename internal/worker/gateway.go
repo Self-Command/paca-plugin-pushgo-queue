@@ -27,6 +27,9 @@ var blockedPrefixes = []netip.Prefix{
 
 func publicIP(addr netip.Addr) bool {
 	addr = addr.Unmap()
+	if addr.Is6() && (!netip.MustParsePrefix("2000::/3").Contains(addr) || netip.MustParsePrefix("2002::/16").Contains(addr) || netip.MustParsePrefix("2001::/32").Contains(addr)) {
+		return false
+	}
 	if !addr.IsGlobalUnicast() {
 		return false
 	}
