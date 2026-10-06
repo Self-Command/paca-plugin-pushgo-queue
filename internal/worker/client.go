@@ -34,6 +34,7 @@ type Worker struct {
 	PublicURL, GatewayToken, EncryptionKey string
 }
 type apiError struct{ Code int }
+
 func (e apiError) Error() string { return fmt.Sprintf("Paca API HTTP %d", e.Code) }
 func readSecret(name string) (string, error) {
 	path := os.Getenv(name + "_FILE")
