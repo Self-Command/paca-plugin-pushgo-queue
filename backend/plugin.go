@@ -1,9 +1,12 @@
 package main
 
-import plugin "github.com/Paca-AI/plugin-sdk-go"
+import (
+	plugin "github.com/Paca-AI/plugin-sdk-go"
+	"github.com/Self-Command/paca-plugin-pushgo-queue/internal/buildinfo"
+)
 
 const pluginID = "com.selfcommand.pushgo-queue"
-const pluginVersion = "0.1.0"
+const pluginVersion = buildinfo.Version
 
 type integrationPlugin struct {
 	db  *plugin.DB
@@ -17,6 +20,14 @@ func (p *integrationPlugin) Init(ctx *plugin.Context) error {
 	ctx.Route("GET", "/worker/control", p.workerControl)
 	ctx.Route("GET", "/health", p.health)
 	ctx.Route("GET", "/projects/:projectId/status", p.status)
+	ctx.Route("GET", "/projects/:projectId/settings", p.settings)
+	ctx.Route("PUT", "/projects/:projectId/settings", p.saveSettings)
+	ctx.Route("GET", "/projects/:projectId/jobs", p.jobs)
+	ctx.Route("POST", "/projects/:projectId/jobs/:jobId/retry", p.retry)
+	ctx.Route("GET", "/projects/:projectId/tasks/:taskId/reminders", p.reminders)
+	ctx.Route("PUT", "/projects/:projectId/tasks/:taskId/reminders", p.setReminders)
+	ctx.Route("GET", "/projects/:projectId/tasks/:taskId/deliveries", p.jobs)
+	for _,topic:=range []string{"task.created","task.updated","task.deleted"}{ctx.On(topic,p.dirty)}
 	return nil
 }
 func (p *integrationPlugin) Shutdown() {}
@@ -26,8 +37,8 @@ func (p *integrationPlugin) health(req *plugin.Request, res *plugin.Response) {
 		res.Error(503, "plugin migration unavailable")
 		return
 	}
-	res.JSON(200, map[string]any{"id": pluginID, "version": pluginVersion, "schema_version": result.Rows[0][0], "phase": "host-baseline"})
+	res.JSON(200, map[string]any{"id": pluginID, "version": pluginVersion, "source_sha": buildinfo.SourceSHA, "schema_version": result.Rows[0][0], "phase": "pushgo-queue"})
 }
 func (p *integrationPlugin) status(req *plugin.Request, res *plugin.Response) {
-	res.JSON(200, map[string]any{"project_id": req.PathParam("projectId"), "configured": false, "worker_online": false, "phase": "host-baseline"})
+	p.settings(req,res)
 }

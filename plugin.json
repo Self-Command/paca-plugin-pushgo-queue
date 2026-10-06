@@ -31,7 +31,11 @@
       "ENCRYPTION_KEY",
       "PUBLIC_URL"
     ],
-    "eventSubscriptions": [],
+    "eventSubscriptions": [
+      "task.created",
+      "task.updated",
+      "task.deleted"
+    ],
     "routes": [
       {
         "method": "GET",
@@ -80,11 +84,147 @@
         "method": "GET",
         "path": "/worker/control",
         "public": true
+      },
+      {
+        "method": "GET",
+        "path": "/projects/:projectId/settings",
+        "middlewares": [
+          {
+            "name": "optionalAuthn"
+          },
+          {
+            "name": "requireFreshPassword"
+          },
+          {
+            "name": "requirePermissions",
+            "scope": "project",
+            "permissions": [
+              "pushgo_queue.read"
+            ]
+          }
+        ]
+      },
+      {
+        "method": "PUT",
+        "path": "/projects/:projectId/settings",
+        "middlewares": [
+          {
+            "name": "optionalAuthn"
+          },
+          {
+            "name": "requireFreshPassword"
+          },
+          {
+            "name": "requirePermissions",
+            "scope": "project",
+            "permissions": [
+              "pushgo_queue.manage"
+            ]
+          }
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/projects/:projectId/jobs",
+        "middlewares": [
+          {
+            "name": "optionalAuthn"
+          },
+          {
+            "name": "requireFreshPassword"
+          },
+          {
+            "name": "requirePermissions",
+            "scope": "project",
+            "permissions": [
+              "pushgo_queue.read"
+            ]
+          }
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/projects/:projectId/jobs/:jobId/retry",
+        "middlewares": [
+          {
+            "name": "optionalAuthn"
+          },
+          {
+            "name": "requireFreshPassword"
+          },
+          {
+            "name": "requirePermissions",
+            "scope": "project",
+            "permissions": [
+              "pushgo_queue.manage"
+            ]
+          }
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/projects/:projectId/tasks/:taskId/reminders",
+        "middlewares": [
+          {
+            "name": "optionalAuthn"
+          },
+          {
+            "name": "requireFreshPassword"
+          },
+          {
+            "name": "requirePermissions",
+            "scope": "project",
+            "permissions": [
+              "pushgo_queue.read"
+            ]
+          }
+        ]
+      },
+      {
+        "method": "PUT",
+        "path": "/projects/:projectId/tasks/:taskId/reminders",
+        "middlewares": [
+          {
+            "name": "optionalAuthn"
+          },
+          {
+            "name": "requireFreshPassword"
+          },
+          {
+            "name": "requirePermissions",
+            "scope": "project",
+            "permissions": [
+              "pushgo_queue.manage"
+            ]
+          }
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/projects/:projectId/tasks/:taskId/deliveries",
+        "middlewares": [
+          {
+            "name": "optionalAuthn"
+          },
+          {
+            "name": "requireFreshPassword"
+          },
+          {
+            "name": "requirePermissions",
+            "scope": "project",
+            "permissions": [
+              "pushgo_queue.read"
+            ]
+          }
+        ]
       }
     ],
     "sensitiveFields": {
       "worker_settings": [
         "secret_enc"
+      ],
+      "project_settings": [
+        "password_enc"
       ]
     }
   },
@@ -97,7 +237,17 @@
         "label": "PushGo 提醒队列",
         "order": 120,
         "requiredPermission": "pushgo_queue.read"
+      },
+      {
+        "point": "task.detail.section",
+        "component": "TaskReminderSection",
+        "label": "PushGo 提醒",
+        "order": 120,
+        "requiredPermission": "pushgo_queue.read"
       }
     ]
+  },
+  "mcp": {
+    "remoteEntryUrl": "/plugins-mcp/com.selfcommand.pushgo-queue/mcp.js"
   }
 }

@@ -20,9 +20,10 @@ jobs:
           go-version: '1.24'
       - name: Go checks
         run: |
-          go mod download
-          gofmt -w backend cmd
-          git diff -- backend cmd > gofmt.patch
+          printf 'package buildinfo\nfunc init() { SourceSHA = "%s" }\n' "$GITHUB_SHA" > internal/buildinfo/stamp.go
+          go mod tidy
+          gofmt -w backend cmd internal
+          git diff -- backend cmd internal go.mod go.sum > gofmt.patch
           go vet ./...
           go test -race ./...
       - uses: actions/upload-artifact@v4
@@ -53,11 +54,14 @@ jobs:
           id=$(jq -r .id plugin.json)
           mkdir -p release/frontend/$id release/assets
           cp -R frontend/dist/. release/frontend/$id/
+          mkdir -p release/mcp/$id
+          bun build mcp/index.ts --target=node --format=esm --outfile release/mcp/$id/mcp.js
           tar -czf release/assets/backend-wasm.tar.gz -C release/wasm/$id backend.wasm
           tar -czf release/assets/frontend-dist.tar.gz -C frontend dist
           tar -czf release/assets/migrations.tar.gz -C backend migrations
           tar -czf release/assets/plugin-manifest.tar.gz plugin.json
-          tar -czf release/assets/plugin-install.tar.gz -C release wasm frontend
+          tar -czf release/assets/mcp-dist.tar.gz -C release/mcp/$id mcp.js
+          tar -czf release/assets/plugin-install.tar.gz -C release wasm frontend mcp
           jq --arg sha "$GITHUB_SHA" --arg run "$GITHUB_RUN_ID" '. + {source_sha:$sha,action_run:$run}' plugin.json > release/assets/build-info.json
           cd release/assets
           sha256sum *.tar.gz build-info.json > checksums.txt
@@ -66,7 +70,7 @@ jobs:
           name: plugin-build
           path: release/
       - name: Strict formatting
-        run: git diff --exit-code -- backend cmd
+        run: git diff --exit-code -- backend cmd internal go.mod go.sum
   compatibility:
     needs: build
     runs-on: ubuntu-24.04
@@ -117,6 +121,7 @@ jobs:
           context: .
           push: true
           platforms: linux/amd64,linux/arm64
+          build-args: SOURCE_SHA=${{ github.sha }}
           tags: ghcr.io/self-command/${{ github.event.repository.name }}-worker:sha-${{ github.sha }}
       - name: Release
         env:
@@ -125,5 +130,5 @@ jobs:
         run: |
           printf '%s\n' "ghcr.io/self-command/${GITHUB_REPOSITORY#*/}-worker@$IMAGE_DIGEST" > release/assets/image-digest.txt
           tag="v0.1.0-dev.${GITHUB_RUN_NUMBER}"
-          printf '%s\n' 'Phase-0 host compatibility baseline; business functionality is not yet implemented.' "Source: $GITHUB_SHA" "Worker: $IMAGE_DIGEST" > /tmp/notes.md
+          printf '%s\n' 'Independent PushGo queue candidate; review host verification report before deployment.' "Source: $GITHUB_SHA" "Worker: $IMAGE_DIGEST" > /tmp/notes.md
           gh release create "$tag" release/assets/* --target "$GITHUB_SHA" --title "$tag" --prerelease --notes-file /tmp/notes.md

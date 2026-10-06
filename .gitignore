@@ -7,3 +7,5 @@
 /secrets/
 /data/
 *.log
+
+internal/buildinfo/stamp.go

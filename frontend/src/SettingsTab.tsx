@@ -1,14 +1,24 @@
-import { useEffect, useState } from "react";
+import {useEffect,useState} from "react";
+import {api,inputClass,buttonClass,type Config,type Job} from "./api";
 
-export default function SettingsTab({projectId}: {projectId: string; canEdit?: boolean}) {
-  const [state,setState] = useState("正在读取插件状态…");
-  useEffect(() => {
-    const controller = new AbortController();
-    fetch(`/api/v1/plugins/com.selfcommand.pushgo-queue/projects/${encodeURIComponent(projectId)}/status`,{credentials:"include",signal:controller.signal})
-      .then(r => { if(!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then(() => setState("已连接宿主；业务功能尚在开发，未启用后台处理。"))
-      .catch(e => {if(e.name !== "AbortError") setState(`状态读取失败：${e.message}`);});
-    return () => controller.abort();
-  },[projectId]);
-  return <section className="space-y-4"><h2 className="text-lg font-semibold">PushGo 提醒队列</h2><div className="rounded-xl border bg-card p-5 text-card-foreground"><p role="status">{state}</p><p className="mt-2 text-sm text-muted-foreground">独立插件与独立 worker，保持 Paca 原有功能。</p></div></section>;
+export default function SettingsTab({projectId,canEdit=true}:{projectId:string;canEdit?:boolean}) {
+ const base=`/projects/${encodeURIComponent(projectId)}`;
+ const [config,setConfig]=useState<Config>({enabled:true,gateway_url:"",channel_id:"",channel_name:"",timezone:"Asia/Shanghai",start_minutes:10,due_minutes:10,created_push:false,priority_map:{none:"normal",low:"low",medium:"normal",high:"high",critical:"critical"}});
+ const [revision,setRevision]=useState(0);const [password,setPassword]=useState("");const [jobs,setJobs]=useState<Job[]>([]);const [state,setState]=useState("正在读取设置…");const [error,setError]=useState("");const [busy,setBusy]=useState(false);
+ async function load(){const [settings,queue]=await Promise.all([api<{config:Config;revision:number;last_error?:string;last_reconciled?:string}>(`${base}/settings`),api<{items:Job[]}>(`${base}/jobs`)]);setConfig(settings.config);setRevision(settings.revision);setJobs(queue.items);setState(`已连接宿主；最近对账：${settings.last_reconciled||"尚未运行"}`);setError(settings.last_error||"")}
+ useEffect(()=>{load().catch(e=>setError(e.message))},[projectId]);
+ const change=<K extends keyof Config>(key:K,value:Config[K])=>setConfig(c=>({...c,[key]:value}));
+ const act=async(fn:()=>Promise<void>)=>{setBusy(true);setError("");try{await fn()}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
+ return <section className="space-y-5"><div><h2 className="text-lg font-semibold">PushGo 推送队列</h2><p role="status" className="text-sm text-muted-foreground">{state}</p></div>{error&&<p role="alert" className="rounded-lg border border-destructive p-3 text-sm text-destructive">{error}</p>}
+  <div className="rounded-xl border bg-card p-5 space-y-3"><h3 className="font-medium">频道绑定与默认提醒</h3><p className="text-sm text-muted-foreground">独立处理 Paca、API、AI 或外部接入任务。Gateway Token 由部署端配置，频道密码加密保存。</p><label className="flex gap-2 text-sm"><input type="checkbox" checked={config.enabled} onChange={e=>change("enabled",e.target.checked)}/>启用项目提醒</label>
+  <label className="block text-sm">PushGo 网关 HTTPS 地址<input className={inputClass} placeholder="https://push.example.org" value={config.gateway_url} onChange={e=>change("gateway_url",e.target.value)}/></label>
+  <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">频道 ID<input className={inputClass} value={config.channel_id} onChange={e=>change("channel_id",e.target.value)}/></label><label className="text-sm">频道显示名称<input className={inputClass} value={config.channel_name} onChange={e=>change("channel_name",e.target.value)}/></label></div>
+  <label className="block text-sm">频道密码（已保存时留空保留）<input type="password" autoComplete="new-password" className={inputClass} value={password} onChange={e=>setPassword(e.target.value)}/></label>
+  <div className="grid gap-3 sm:grid-cols-3"><label className="text-sm">时区<input className={inputClass} value={config.timezone} onChange={e=>change("timezone",e.target.value)}/></label><label className="text-sm">开始提前分钟<input type="number" min="0" max="1440" className={inputClass} value={config.start_minutes} onChange={e=>change("start_minutes",Number(e.target.value))}/></label><label className="text-sm">截止提前分钟<input type="number" min="0" max="1440" className={inputClass} value={config.due_minutes} onChange={e=>change("due_minutes",Number(e.target.value))}/></label></div>
+  <label className="flex gap-2 text-sm"><input type="checkbox" checked={config.created_push} onChange={e=>change("created_push",e.target.checked)}/>创建即推送（5 分钟有效期，默认关闭）</label>
+  <div className="grid gap-2 sm:grid-cols-5">{Object.entries(config.priority_map).map(([key,value])=><label key={key} className="text-sm">{key}<select className={inputClass} value={value} onChange={e=>change("priority_map",{...config.priority_map,[key]:e.target.value})}>{["low","normal","high","critical"].map(v=><option key={v}>{v}</option>)}</select></label>)}</div>
+  <div className="flex gap-2"><button className={buttonClass} disabled={busy||!canEdit} onClick={()=>act(async()=>{await api(`${base}/settings`,"PUT",{...config,revision,...(password?{password}:{})});setPassword("");await load()})}>保存频道与规则</button><button className={buttonClass} disabled={busy} onClick={()=>act(load)}>刷新队列</button></div>
+  <p className="text-xs text-muted-foreground">原生日期未确认时分时不会安排提醒。请在任务详情的 PushGo 提醒区确认，或让 AI 调用 pushgo_set_reminders。任务改期、完成、删除后服务器重新核对。</p></div>
+  <div className="rounded-xl border bg-card p-5 space-y-3"><h3 className="font-medium">最近 100 条投递</h3><p className="text-sm text-muted-foreground">gateway_accepted 仅表示网关接受，不代表手机送达。重试保留相同 op_id；过期提醒不会补发。</p>{jobs.length===0?<p className="text-sm">暂无预约。</p>:<div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr><th>任务 / 类型</th><th>预约 / 过期</th><th>状态</th><th>结果</th></tr></thead><tbody>{jobs.map(j=><tr key={j.id} className="border-t"><td className="py-3"><a className="text-primary underline" href={`/projects/${projectId}/tasks/${j.task_id}`}>{j.kind}</a><code className="block text-xs">#{j.id}</code></td><td>{j.fire_at}<br/>{j.expires_at}</td><td>{j.state}（{j.attempts}）</td><td>{j.error}{["failed","retry_wait"].includes(j.state)&&<button className={buttonClass} disabled={busy||!canEdit} onClick={()=>act(async()=>{await api(`${base}/jobs/${j.id}/retry`,"POST",{});await load()})}>重试原消息</button>}</td></tr>)}</tbody></table></div>}</div>
+ </section>;
 }
