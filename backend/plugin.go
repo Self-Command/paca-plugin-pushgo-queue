@@ -27,7 +27,9 @@ func (p *integrationPlugin) Init(ctx *plugin.Context) error {
 	ctx.Route("GET", "/projects/:projectId/tasks/:taskId/reminders", p.reminders)
 	ctx.Route("PUT", "/projects/:projectId/tasks/:taskId/reminders", p.setReminders)
 	ctx.Route("GET", "/projects/:projectId/tasks/:taskId/deliveries", p.jobs)
-	for _,topic:=range []string{"task.created","task.updated","task.deleted"}{ctx.On(topic,p.dirty)}
+	for _, topic := range []string{"task.created", "task.updated", "task.deleted"} {
+		ctx.On(topic, p.dirty)
+	}
 	return nil
 }
 func (p *integrationPlugin) Shutdown() {}
@@ -40,5 +42,5 @@ func (p *integrationPlugin) health(req *plugin.Request, res *plugin.Response) {
 	res.JSON(200, map[string]any{"id": pluginID, "version": pluginVersion, "source_sha": buildinfo.SourceSHA, "schema_version": result.Rows[0][0], "phase": "pushgo-queue"})
 }
 func (p *integrationPlugin) status(req *plugin.Request, res *plugin.Response) {
-	p.settings(req,res)
+	p.settings(req, res)
 }

@@ -1,0 +1,113 @@
+"""Queue acceptance against official Paca and a TLS fake Gateway; Actions only."""
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+import datetime, ssl, threading
+
+verification=ROOT/'verification'
+verification.mkdir(exist_ok=True)
+secret_dir=ROOT/'ci-secrets'
+secret_dir.mkdir(mode=0o700,exist_ok=True)
+gateway_token=secrets.token_hex(24)
+api_key=request('POST','/users/me/api-keys',{'name':'Queue CI worker'},201)['data']['key']
+for name,value in [('api-key',api_key),('worker-secret',worker_secret),('gateway-token',gateway_token),('encryption-key',env['ENCRYPTION_KEY'])]:
+    (secret_dir/name).write_text(value)
+    (secret_dir/name).chmod(0o600)
+cmd('openssl','req','-x509','-newkey','rsa:2048','-nodes','-keyout',str(secret_dir/'tls.key'),'-out',str(secret_dir/'tls.pem'),'-days','1','-subj','/CN=localhost','-addext','subjectAltName=IP:127.0.0.1,DNS:localhost')
+accepted={}
+submissions=[]
+lost_response=False
+class Gateway(BaseHTTPRequestHandler):
+    def log_message(self,*args): pass
+    def do_POST(self):
+        global lost_response
+        body=json.loads(self.rfile.read(int(self.headers.get('Content-Length',0))))
+        assert self.path=='/message'
+        assert self.headers.get('Authorization')=='Bearer '+gateway_token
+        assert body['channel_id']=='ci-channel' and body['password']=='ci-channel-password'
+        assert 'message_id' not in body and len(body['op_id'])<=128
+        assert body['ttl']>int(time.time()*1000)
+        stable={k:v for k,v in body.items() if k not in ('password',)}
+        if body['op_id'] in accepted: assert accepted[body['op_id']]==stable,'operation payload changed during retry'
+        accepted[body['op_id']]=stable
+        submissions.append(body)
+        if not lost_response:
+            lost_response=True
+            self.connection.shutdown(2)
+            self.connection.close()
+            return
+        self.send_response(200)
+        self.send_header('Content-Type','application/json')
+        self.end_headers()
+        self.wfile.write(json.dumps({'success':True,'data':{'op_id':body['op_id'],'message_id':'ci-message-'+body['op_id']}}).encode())
+server=ThreadingHTTPServer(('127.0.0.1',19090),Gateway)
+tls=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+tls.load_cert_chain(secret_dir/'tls.pem',secret_dir/'tls.key')
+server.socket=tls.wrap_socket(server.socket,server_side=True)
+threading.Thread(target=server.serve_forever,daemon=True).start()
+cfg={'enabled':True,'gateway_url':'https://127.0.0.1:19090','channel_id':'ci-channel','channel_name':'CI','password':'ci-channel-password','timezone':'Asia/Shanghai','start_minutes':10,'due_minutes':10,'created_push':False,'revision':0}
+request('PUT',f'/plugins/{plugin_id}/projects/{project["id"]}/settings',cfg)
+settings=request('GET',f'/plugins/{plugin_id}/projects/{project["id"]}/settings')
+assert 'password' not in json.dumps(settings)
+cmd('docker','run','-d','--name','paca-ci-db-forward','--network','paca-ci','-p','127.0.0.1:15432:5432','alpine/socat','tcp-listen:5432,fork,reuseaddr','tcp-connect:paca-ci-db:5432')
+worker_env={**os.environ,'PACA_API_URL':'http://127.0.0.1:18080','DATABASE_URL':'postgres://postgres:ci-only-password@127.0.0.1:15432/paca?sslmode=disable','PACA_API_KEY_FILE':str(secret_dir/'api-key'),'WORKER_SECRET_FILE':str(secret_dir/'worker-secret'),'GATEWAY_TOKEN_FILE':str(secret_dir/'gateway-token'),'ENCRYPTION_KEY_FILE':str(secret_dir/'encryption-key'),'PUBLIC_URL':'https://task.example.org','PUSHGO_CI_ALLOW_LOOPBACK':'true','SSL_CERT_FILE':str(secret_dir/'tls.pem')}
+log=open(verification/'queue-worker.log','w')
+worker_process=subprocess.Popen(['/tmp/pushgo-worker'],env=worker_env,stdout=log,stderr=log)
+
+def core_task(title,importance=35):
+    return request('POST',f'/projects/{project["id"]}/tasks',{'title':title,'importance':importance},201)['data']
+def configure(t,start,revision=0,enabled=True):
+    current=request('GET',f'/projects/{project["id"]}/tasks/{t["id"]}')['data']
+    return request('PUT',f'/plugins/{plugin_id}/projects/{project["id"]}/tasks/{t["id"]}/reminders',{'base_task':current,'revision':revision,'enabled':enabled,'start':start,'due':'','timezone':'Asia/Shanghai','start_minutes':10},202)
+def queue():
+    return request('GET',f'/plugins/{plugin_id}/projects/{project["id"]}/jobs')['items']
+def wait_state(task_id,state):
+    for _ in range(120):
+        rows=[j for j in queue() if j['task_id']==task_id]
+        if any(j['state']==state for j in rows):return rows
+        time.sleep(0.5)
+    raise AssertionError(f'job never reached {state}: {rows}')
+def instant(offset):
+    return (datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(seconds=offset)).isoformat()
+
+# Native dates remain pending until explicitly confirmed.
+native=core_task('Native date requires precise confirmation')
+request('PATCH',f'/projects/{project["id"]}/tasks/{native["id"]}',{'start_date':instant(86400)})
+time.sleep(3)
+assert not any(j['task_id']==native['id'] for j in queue())
+
+four=[]
+for importance,severity in [(10,'low'),(35,'normal'),(75,'high'),(150,'critical')]:
+    t=core_task('Four-level '+severity,importance)
+    configure(t,instant(603))
+    four.append((t,severity))
+for t,severity in four:
+    wait_state(t['id'],'gateway_accepted')
+assert {b['severity'] for b in accepted.values()}=={'low','normal','high','critical'}
+assert len(accepted)==4 and len(submissions)>4,'response-loss test must retry same operation'
+
+# Rescheduling cancels the old future job, restart preserves its replacement.
+changed=core_task('Reschedule then cancel')
+configure(changed,instant(3600))
+first=wait_state(changed['id'],'scheduled')
+old_op=next(j['op_id'] for j in first if j['state']=='scheduled')
+configure(changed,instant(7200),revision=1)
+time.sleep(3)
+rows=[j for j in queue() if j['task_id']==changed['id']]
+assert next(j for j in rows if j['op_id']==old_op)['state']=='superseded'
+assert sum(j['state']=='scheduled' for j in rows)==1
+worker_process.terminate();worker_process.wait(timeout=10)
+worker_process=subprocess.Popen(['/tmp/pushgo-worker'],env=worker_env,stdout=log,stderr=log)
+time.sleep(3)
+assert len(accepted)==4
+statuses=request('GET',f'/projects/{project["id"]}/task-statuses')['data']['items']
+done=next(s['id'] for s in statuses if s['category']=='done')
+request('PATCH',f'/projects/{project["id"]}/tasks/{changed["id"]}',{'status_id':done})
+wait_state(changed['id'],'superseded')
+time.sleep(3)
+assert not any(j['task_id']==changed['id'] and j['state'] in ('scheduled','retry_wait','sending') for j in queue())
+expired=core_task('Expired reminders are not sent')
+configure(expired,instant(-5))
+wait_state(expired['id'],'expired')
+assert len(accepted)==4
+worker_process.terminate();worker_process.wait(timeout=10)
+log.close();server.shutdown()
+(verification/'queue-report.json').write_text(json.dumps({'native_date_requires_confirmation':True,'four_levels':True,'absolute_ttl':True,'same_op_id_after_lost_response':True,'reschedule_supersedes':True,'restart_no_duplicate':True,'complete_cancels':True,'expired_no_delivery':True},indent=2))
