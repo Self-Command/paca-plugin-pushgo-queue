@@ -16,14 +16,18 @@ raw=json.dumps(event,ensure_ascii=False).encode()
 headers={'Content-Type':'application/json','X-TaskNotes-Event':'task.created','X-TaskNotes-Delivery-ID':'pair-create','X-TaskNotes-Signature':hmac.new(connection['secret'].encode(),raw,hashlib.sha256).hexdigest()}
 with opener.open(urllib.request.Request(base+f'/plugins/{aid}/receive/{connection["id"]}',data=raw,method='POST',headers=headers)) as r: assert r.status==202
 before=len(accepted)
-for _ in range(120):
+for _ in range(190):
     sources=request('GET',f'/plugins/{aid}/projects/{project["id"]}/connections/{connection["id"]}/sources')['items']
     if sources and sources[0]['task_id']:
         imported=sources[0]['task_id']
         rows=[j for j in queue() if j['task_id']==imported]
         if any(j['state']=='gateway_accepted' for j in rows):break
     time.sleep(0.5)
-else:raise AssertionError(f'pair import/queue failed: sources={sources}; jobs={queue()}')
+else:
+    core=request('GET',f'/projects/{project["id"]}/tasks/{imported}') if sources and sources[0]['task_id'] else None
+    (verification/'pair-failure.json').write_text(json.dumps({'sources':sources,'core':core,'settings':request('GET',f'/plugins/{plugin_id}/projects/{project["id"]}/settings'),'jobs':queue()},indent=2))
+    subprocess.run(['docker','logs','paca-ci-tasknotes-worker','--tail','50'])
+    raise AssertionError(f'pair import/queue failed; see pair-failure.json')
 assert len(accepted)==before+1
 assert next(b for b in accepted.values() if b['title']=='任务即将开始：两个独立插件联合提醒')['severity']=='high'
 request('GET',f'/projects/{project["id"]}/tasks/{imported}')

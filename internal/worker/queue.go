@@ -102,6 +102,9 @@ func (w *Worker) reconcile(ctx context.Context, project string) error {
 		if err != nil {
 			return err
 		}
+		if _, err = w.DB.Exec(ctx, "UPDATE plans SET state='cancelled',fingerprint='',updated_at=NOW() WHERE project_id=$1", project); err != nil {
+			return err
+		}
 		_, err = w.DB.Exec(ctx, "UPDATE project_settings SET last_reconciled=NOW(),needs_reconcile=FALSE,last_error='' WHERE project_id=$1 AND revision=$2", project, s.Revision)
 		return err
 	}
