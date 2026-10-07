@@ -85,3 +85,12 @@ The CI Gateway deliberately loses an accepted response to validate stable retrie
 use private Gateway targets; loopback is enabled only by two explicit CI runtime flags in the test job.
 Combined acceptance installs a separately verified TaskNotes release, without compiling or merging its code here.
 See the Action's `host-verification` report for actual results and remaining device checks.
+
+
+## 可选拍照打卡与任务卡片
+
+在受控容器网络配置 `CHECKIN_WORKER_URL` 和 `CHECKIN_SERVICE_SECRET_FILE`，与独立打卡插件的内部授权一致。在项目设置开启“在提醒中提供拍照打卡”。未启用时不连接打卡插件。启用后沿用打卡插件确认的精确时刻、窗口和实例版本；结束成功不取消仍有效的独立开始窗口。
+
+网页动作及任务卡片在首次提交前持久保存，超时重试复用同一入口、内容和操作 ID。已冻结的快照不因正文更新而改变，改期或取消会替换计划并让旧入口失效。普通任务可独立使用任务卡片，标题、正文、状态、优先级、准确时间、标签和来源通过通用 `task_card_version`/`task_card` 元数据传递。长消息沿用 Gateway 原有超限拉取机制，不将完整任务正文硬塞到 HMS 直接数据包。
+
+设置及投递页面复用固定版本 shadcn/ui 原组件，所有状态与字段使用中文说明；开发编号、内部状态枚举、SQL 错误和操作 ID 保留在鉴权接口和诊断记录，不显示到日常页面。

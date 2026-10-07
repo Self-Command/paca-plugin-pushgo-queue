@@ -27,7 +27,7 @@ func TestDisabledOrMismatchedHostPreventsMutation(t *testing.T) {
 				version := Version
 				source := buildinfo.SourceSHA
 				identity := PluginID
-				schema := 3
+				schema := 4
 				enabled := true
 				if mode == "disabled" {
 					enabled = false

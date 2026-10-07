@@ -164,8 +164,12 @@ func (w *Worker) syncTask(ctx context.Context, s settings, t model.Task, done bo
 	if err != nil {
 		return err
 	}
-	specs, state := model.Compute(t, s.Config, rule, done)
-	fingerprint := model.Hash(map[string]any{"specs": specs, "state": state})
+	specs, state, err := w.specifications(ctx, s, t, rule, done)
+ if err != nil { return err }
+	t.ProjectID=s.Project
+ metadata,err:=w.taskCardMetadata(ctx,t,s.Config,rule,done)
+ if err!=nil{return err}
+ fingerprint := model.Hash(map[string]any{"specs": specs, "state": state, "card": metadata})
 	tx, err := w.DB.Begin(ctx)
 	if err != nil {
 		return err
@@ -192,7 +196,7 @@ func (w *Worker) syncTask(ctx context.Context, s settings, t model.Task, done bo
 		return err
 	}
 	for _, spec := range specs {
-		payload := map[string]any{"title": spec.Title, "body": spec.Body, "severity": spec.Severity, "ttl": spec.Expires.UnixMilli(), "url": strings.TrimRight(w.PublicURL, "/") + "/projects/" + s.Project + "/tasks/" + t.ID}
+		payload := map[string]any{"title": spec.Title, "body": spec.Body, "severity": spec.Severity, "ttl": spec.Expires.UnixMilli(), "url": strings.TrimRight(w.PublicURL, "/") + "/projects/" + s.Project + "/tasks/" + t.ID, "metadata": metadata}
 		raw, _ := json.Marshal(payload)
 		jobState := "scheduled"
 		if !spec.Expires.After(time.Now()) {
@@ -200,7 +204,7 @@ func (w *Worker) syncTask(ctx context.Context, s settings, t model.Task, done bo
 		}
 		op := model.OpID(s.Project, t.ID, spec)
 		// Preserve payload/op_id once a submit was attempted; response-loss retries must remain identical.
-		_, err = tx.Exec(ctx, "INSERT INTO jobs(project_id,task_id,kind,target_at,fire_at,expires_at,plan_revision,binding_key,op_id,payload,state,next_attempt) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$5) ON CONFLICT(op_id) DO UPDATE SET plan_revision=EXCLUDED.plan_revision,fire_at=EXCLUDED.fire_at,payload=CASE WHEN jobs.attempts=0 THEN EXCLUDED.payload ELSE jobs.payload END,state=CASE WHEN jobs.state='gateway_accepted' THEN jobs.state WHEN jobs.expires_at<=NOW() THEN 'expired' ELSE EXCLUDED.state END,next_attempt=GREATEST(EXCLUDED.fire_at,NOW()),lease_owner=NULL,lease_until=NULL,updated_at=NOW()", s.Project, t.ID, spec.Kind, spec.Target, spec.Fire, spec.Expires, revision, spec.Binding, op, string(raw), jobState)
+		_, err = tx.Exec(ctx, "INSERT INTO jobs(project_id,task_id,kind,target_at,fire_at,expires_at,plan_revision,binding_key,op_id,payload,state,next_attempt) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$5) ON CONFLICT(op_id) DO UPDATE SET plan_revision=EXCLUDED.plan_revision,fire_at=EXCLUDED.fire_at,payload=CASE WHEN jobs.attempts=0 AND NOT jobs.action_ready THEN EXCLUDED.payload ELSE jobs.payload END,state=CASE WHEN jobs.state='gateway_accepted' THEN jobs.state WHEN jobs.expires_at<=NOW() THEN 'expired' ELSE EXCLUDED.state END,next_attempt=GREATEST(EXCLUDED.fire_at,NOW()),lease_owner=NULL,lease_until=NULL,updated_at=NOW()", s.Project, t.ID, spec.Kind, spec.Target, spec.Fire, spec.Expires, revision, spec.Binding, op, string(raw), jobState)
 		if err != nil {
 			return err
 		}
@@ -214,6 +218,8 @@ type job struct {
 	Revision, Attempts, Generation          int
 	Payload                                 []byte
 	Expires                                 time.Time
+ Target time.Time
+ ActionReady bool
 }
 
 func (w *Worker) dispatch(ctx context.Context) error {
@@ -228,7 +234,7 @@ func (w *Worker) dispatch(ctx context.Context) error {
 	}
 	owner := fmt.Sprintf("%x", ownerBytes)
 	j := job{Owner: owner}
-	err := w.DB.QueryRow(ctx, "WITH candidate AS (SELECT id FROM jobs WHERE state IN ('scheduled','retry_wait','sending') AND fire_at<=NOW() AND next_attempt<=NOW() AND expires_at>NOW() AND (lease_until IS NULL OR lease_until<NOW()) ORDER BY fire_at FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE jobs j SET state='sending',lease_owner=$1,lease_until=NOW()+INTERVAL '60 seconds',generation=generation+1,updated_at=NOW() FROM candidate c WHERE j.id=c.id RETURNING j.id,j.project_id::text,j.task_id::text,j.kind,j.op_id,j.plan_revision,j.attempts,j.payload,j.expires_at,j.generation,j.binding_key", owner).Scan(&j.ID, &j.Project, &j.Task, &j.Kind, &j.Op, &j.Revision, &j.Attempts, &j.Payload, &j.Expires, &j.Generation, &j.Binding)
+	err := w.DB.QueryRow(ctx, "WITH candidate AS (SELECT id FROM jobs WHERE state IN ('scheduled','retry_wait','sending') AND fire_at<=NOW() AND next_attempt<=NOW() AND expires_at>NOW() AND (lease_until IS NULL OR lease_until<NOW()) ORDER BY fire_at FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE jobs j SET state='sending',lease_owner=$1,lease_until=NOW()+INTERVAL '60 seconds',generation=generation+1,updated_at=NOW() FROM candidate c WHERE j.id=c.id RETURNING j.id,j.project_id::text,j.task_id::text,j.kind,j.op_id,j.plan_revision,j.attempts,j.payload,j.expires_at,j.generation,j.binding_key,j.target_at,j.action_ready", owner).Scan(&j.ID, &j.Project, &j.Task, &j.Kind, &j.Op, &j.Revision, &j.Attempts, &j.Payload, &j.Expires, &j.Generation, &j.Binding, &j.Target, &j.ActionReady)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
@@ -253,8 +259,8 @@ func (w *Worker) dispatch(ctx context.Context) error {
 		return w.result(ctx, j, "retry_wait", safeError(err), nil, time.Minute)
 	}
 	if err = w.syncTask(ctx, s, task, done[task.StatusID]); err != nil {
-		return err
-	}
+  return w.result(ctx, j, "retry_wait", safeError(err), nil, 15*time.Second)
+ }
 	var valid bool
 	err = w.DB.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM jobs j JOIN plans p ON p.project_id=j.project_id AND p.task_id=j.task_id WHERE j.id=$1 AND j.state='sending' AND j.lease_owner=$2 AND j.generation=$3 AND j.plan_revision=p.revision AND p.state IN ('active','confirmation_stale') AND j.expires_at>NOW())", j.ID, j.Owner, j.Generation).Scan(&valid)
 	if err != nil || !valid {
@@ -263,7 +269,13 @@ func (w *Worker) dispatch(ctx context.Context) error {
 	if err = w.control(ctx); err != nil {
 		return w.result(ctx, j, "retry_wait", "host control unavailable; paused", nil, time.Minute)
 	}
-	// Record an attempt before external submit; a crash preserves both op_id and exact payload.
+	if strings.Contains(j.Binding, ":checkin:") && j.Attempts==0 && !j.ActionReady {
+  payload, actionErr := w.resolveAction(ctx, j)
+  if actionErr != nil { return w.result(ctx, j, "retry_wait", safeError(actionErr), nil, 15*time.Second) }
+  saved, saveErr := w.DB.Exec(ctx, "UPDATE jobs SET payload=$1::jsonb,action_ready=TRUE WHERE id=$2 AND lease_owner=$3 AND generation=$4 AND state='sending' AND attempts=0 AND NOT action_ready AND expires_at>NOW()", string(payload), j.ID, j.Owner, j.Generation)
+  if saveErr != nil { return saveErr }; if saved.RowsAffected()!=1 { return nil }; j.Payload=payload; j.ActionReady=true
+ }
+ // Record an attempt before external submit; a crash preserves both op_id and exact payload.
 	updated, err := w.DB.Exec(ctx, "UPDATE jobs SET attempts=attempts+1 WHERE id=$1 AND lease_owner=$2 AND generation=$3 AND state='sending' AND EXISTS(SELECT 1 FROM plans p WHERE p.project_id=jobs.project_id AND p.task_id=jobs.task_id AND p.revision=jobs.plan_revision)", j.ID, j.Owner, j.Generation)
 	if err != nil {
 		return err

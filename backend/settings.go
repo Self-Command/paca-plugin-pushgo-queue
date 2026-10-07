@@ -162,14 +162,14 @@ func (p *integrationPlugin) setReminders(req *plugin.Request, res *plugin.Respon
 }
 func (p *integrationPlugin) jobs(req *plugin.Request, res *plugin.Response) {
 	taskID := req.PathParam("taskId")
-	rows, err := p.db.Query("SELECT id,task_id::text,kind,fire_at::text,expires_at::text,state,attempts,last_error,op_id FROM jobs WHERE project_id=$1 AND ($2='' OR task_id::text=$2) ORDER BY id DESC LIMIT 100", req.PathParam("projectId"), taskID)
+	rows, err := p.db.Query("SELECT id,task_id::text,kind,fire_at::text,expires_at::text,state,attempts,last_error,op_id,COALESCE(payload->>'title','任务提醒') FROM jobs WHERE project_id=$1 AND ($2='' OR task_id::text=$2) ORDER BY id DESC LIMIT 100", req.PathParam("projectId"), taskID)
 	if err != nil {
 		res.Error(503, "queue unavailable")
 		return
 	}
 	items := []any{}
 	for _, r := range rows.Rows {
-		items = append(items, map[string]any{"id": r[0], "task_id": r[1], "kind": r[2], "fire_at": r[3], "expires_at": r[4], "state": r[5], "attempts": r[6], "error": r[7], "op_id": r[8]})
+		items = append(items, map[string]any{"id": r[0], "task_id": r[1], "kind": r[2], "fire_at": r[3], "expires_at": r[4], "state": r[5], "attempts": r[6], "error": r[7], "op_id": r[8], "title": r[9]})
 	}
 	res.JSON(200, map[string]any{"items": items, "accepted_does_not_mean_phone_delivered": true})
 }

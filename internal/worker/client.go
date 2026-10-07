@@ -32,6 +32,7 @@ type Worker struct {
 	API, Key, Secret                       string
 	HTTP                                   *http.Client
 	PublicURL, GatewayToken, EncryptionKey string
+ CheckinURL, CheckinSecret string
 }
 type apiError struct{ Code int }
 
@@ -76,11 +77,19 @@ func New(ctx context.Context) (*Worker, error) {
 	if err != nil || len(encryption) != 64 {
 		return nil, errors.New("ENCRYPTION_KEY_FILE required")
 	}
-	db, err := pgx.ConnectConfig(ctx, cfg)
+	checkinURL := strings.TrimRight(os.Getenv("CHECKIN_WORKER_URL"), "/")
+ checkinSecret := ""
+ if checkinURL != "" {
+  checkin, parseErr := url.Parse(checkinURL)
+  if parseErr != nil || checkin.Host == "" || checkin.User != nil || checkin.RawQuery != "" || checkin.Fragment != "" || checkin.Path != "" || (checkin.Scheme != "http" && checkin.Scheme != "https") { return nil, errors.New("fixed CHECKIN_WORKER_URL origin required") }
+  checkinSecret, err = readSecret("CHECKIN_SERVICE_SECRET")
+  if err != nil || len(checkinSecret) != 64 { return nil, errors.New("CHECKIN_SERVICE_SECRET_FILE required") }
+ }
+ db, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	return &Worker{DB: db, API: base, Key: key, Secret: secret, HTTP: &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, PublicURL: publicURL, GatewayToken: gatewayToken, EncryptionKey: encryption}, nil
+	return &Worker{DB: db, API: base, Key: key, Secret: secret, HTTP: &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, PublicURL: publicURL, GatewayToken: gatewayToken, EncryptionKey: encryption, CheckinURL: checkinURL, CheckinSecret: checkinSecret}, nil
 }
 func (w *Worker) control(ctx context.Context) error {
 	b := make([]byte, 24)
@@ -110,7 +119,7 @@ func (w *Worker) control(ctx context.Context) error {
 		Enabled bool   `json:"enabled"`
 		Source  string `json:"source_sha"`
 	}
-	if r.StatusCode != 200 || json.NewDecoder(io.LimitReader(r.Body, 65536)).Decode(&c) != nil || !c.Enabled || c.ID != PluginID || c.Version != Version || c.Schema != 3 || len(buildinfo.SourceSHA) != 40 || c.Source != buildinfo.SourceSHA {
+	if r.StatusCode != 200 || json.NewDecoder(io.LimitReader(r.Body, 65536)).Decode(&c) != nil || !c.Enabled || c.ID != PluginID || c.Version != Version || c.Schema != 4 || len(buildinfo.SourceSHA) != 40 || c.Source != buildinfo.SourceSHA {
 		return errors.New("host disabled or worker version/schema mismatch")
 	}
 	return nil

@@ -23,6 +23,8 @@ type Task struct {
 	Due        *time.Time     `json:"due_date"`
 	CreatedAt  time.Time      `json:"created_at"`
 	Custom     map[string]any `json:"custom_fields"`
+ Description any `json:"description"`
+ Tags []string `json:"tags"`
 }
 type Config struct {
 	Enabled      bool              `json:"enabled"`
@@ -33,6 +35,7 @@ type Config struct {
 	StartMinutes int               `json:"start_minutes"`
 	DueMinutes   int               `json:"due_minutes"`
 	CreatedPush  bool              `json:"created_push"`
+ CheckinEnabled bool `json:"checkin_enabled"`
 	PriorityMap  map[string]string `json:"priority_map"`
 }
 type Rule struct {
@@ -238,3 +241,5 @@ func Compute(t Task, c Config, r *Rule, done bool) ([]Spec, string) {
 func OpID(project, task string, s Spec) string {
 	return "paca_" + Hash(strings.Join([]string{project, task, s.Kind, s.Target.UTC().Format(time.RFC3339Nano), s.Binding}, "\n"))
 }
+
+func Precise(t Task,kind string,value *time.Time)*time.Time{return precision(t,kind,value)}
