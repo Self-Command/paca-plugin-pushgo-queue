@@ -94,3 +94,5 @@ See the Action's `host-verification` report for actual results and remaining dev
 网页动作及任务卡片在首次提交前持久保存，超时重试复用同一入口、内容和操作 ID。已冻结的快照不因正文更新而改变，改期或取消会替换计划并让旧入口失效。普通任务可独立使用任务卡片，标题、正文、状态、优先级、准确时间、标签和来源通过通用 `task_card_version`/`task_card` 元数据传递。长消息沿用 Gateway 原有超限拉取机制，不将完整任务正文硬塞到 HMS 直接数据包。
 
 设置及投递页面复用固定版本 shadcn/ui 原组件，所有状态与字段使用中文说明；开发编号、内部状态枚举、SQL 错误和操作 ID 保留在鉴权接口和诊断记录，不显示到日常页面。
+
+数据库访问为每个插件加独立查询标识，避免官方宿主共享 PostgreSQL 连接池在切换 schema 后复用其他插件的缓存执行计划。保持独立 schema、角色和 API 边界，使用三个插件的匹配发行产物。
