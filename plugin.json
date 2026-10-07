@@ -1,7 +1,7 @@
 {
   "id": "com.selfcommand.pushgo-queue",
   "displayName": "PushGo 提醒队列",
-  "description": "Independent integration with durable companion worker.",
+  "description": "按任务安排发送 PushGo 提醒，支持优先级和可选拍照打卡。",
   "version": "0.1.0",
   "minCoreVersion": "v0.18.6",
   "permissions": [
@@ -12,12 +12,12 @@
   "customPermissions": [
     {
       "key": "pushgo_queue.read",
-      "label": "View PushGo 提醒队列",
+      "label": "查看提醒设置与投递记录",
       "scope": "project"
     },
     {
       "key": "pushgo_queue.manage",
-      "label": "Manage PushGo 提醒队列",
+      "label": "管理提醒与频道",
       "scope": "project"
     },
     {

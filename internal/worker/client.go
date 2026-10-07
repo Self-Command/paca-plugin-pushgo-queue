@@ -124,7 +124,7 @@ func (w *Worker) control(ctx context.Context) error {
 		Source  string `json:"source_sha"`
 	}
 	if r.StatusCode != 200 || json.NewDecoder(io.LimitReader(r.Body, 65536)).Decode(&c) != nil || !c.Enabled || c.ID != PluginID || c.Version != Version || c.Schema != 4 || len(buildinfo.SourceSHA) != 40 || c.Source != buildinfo.SourceSHA {
-		return errors.New("host disabled or worker version/schema mismatch")
+		return fmt.Errorf("host paused: HTTP %d enabled=%t id=%s schema=%d source=%s", r.StatusCode, c.Enabled, c.ID, c.Schema, c.Source)
 	}
 	return nil
 }

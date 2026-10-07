@@ -32,6 +32,9 @@ worker_process=subprocess.Popen(['/tmp/pushgo-worker'],env=worker_env,stdout=ope
 t=core_task('任务照片与可靠推送',75)
 request('PATCH',f'/projects/{project["id"]}/tasks/{t["id"]}',{'tags':['学习'],'description':[{'type':'paragraph','content':[{'type':'text','text':'阅读第五章，整理三个要点。'}],'children':[]}]})
 request('PUT',cp+f'/tasks/{t["id"]}/checkin',{'revision':0,'config':{'enabled':True,'start':instant(180),'due':instant(240)}})
+# Verify C eligibility before waiting on the durable B worker.
+probe_req=urllib.request.Request('http://127.0.0.1:19092/internal/v1/task',data=json.dumps({'project_id':project['id'],'task_id':t['id']}).encode(),method='POST',headers={'Content-Type':'application/json','Authorization':'Bearer '+action_secret})
+with urllib.request.urlopen(probe_req,timeout=20) as response:assert json.load(response)['enabled']
 before=len(accepted);lost_response=False
 try:wait_state(t['id'],'gateway_accepted')
 except Exception:

@@ -45,8 +45,10 @@ func (w *Worker) checkinCall(ctx context.Context, path string, input any, out an
 	}
 	defer r.Body.Close()
 	if r.StatusCode != 200 {
-		return errors.New("打卡安排需要确认，请检查任务时间及打卡设置")
-	}
+        var reason struct { Error string `json:"error"` }
+        _ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&reason)
+        return fmt.Errorf("check-in HTTP %d: %.300s", r.StatusCode, reason.Error)
+    }
 	if json.NewDecoder(io.LimitReader(r.Body, 2*1024*1024)).Decode(out) != nil {
 		return errors.New("打卡安排暂时无法读取，请稍后重试")
 	}
