@@ -33,7 +33,21 @@ t=core_task('任务照片与可靠推送',75)
 request('PATCH',f'/projects/{project["id"]}/tasks/{t["id"]}',{'tags':['学习'],'description':[{'type':'paragraph','content':[{'type':'text','text':'阅读第五章，整理三个要点。'}],'children':[]}]})
 request('PUT',cp+f'/tasks/{t["id"]}/checkin',{'revision':0,'config':{'enabled':True,'start':instant(180),'due':instant(240)}})
 before=len(accepted);lost_response=False
-wait_state(t['id'],'gateway_accepted')
+try:wait_state(t['id'],'gateway_accepted')
+except Exception:
+    probe={ 'b_health':request('GET',f'/plugins/{plugin_id}/health'),'c_health':request('GET',f'/plugins/{cid}/health'),'settings':request('GET',f'/plugins/{plugin_id}/projects/{project["id"]}/settings'),'jobs':queue() }
+    candidates=request('GET',f'/projects/{project["id"]}/tasks?page_size=200')['data']['items']
+    probe['task_plans']=[]
+    for candidate in candidates:
+        req=urllib.request.Request('http://127.0.0.1:19092/internal/v1/task',data=json.dumps({'project_id':project['id'],'task_id':candidate['id']}).encode(),method='POST',headers={'Content-Type':'application/json','Authorization':'Bearer '+action_secret})
+        try:
+            with urllib.request.urlopen(req,timeout=15) as response:status,payload=response.status,response.read()
+        except urllib.error.HTTPError as error:status,payload=error.code,error.read()
+        probe['task_plans'].append({'title':candidate['title'],'status':status,'response':json.loads(payload)})
+    (verification/'checkin-pair-failure.json').write_text(json.dumps(probe,indent=2))
+    logs=subprocess.check_output(['docker','logs','paca-ci-checkin-worker','--tail','100'],stderr=subprocess.STDOUT,text=True)
+    (verification/'checkin-c-worker.log').write_text(logs)
+    raise
 bodies=[v for v in accepted.values() if v['title'].endswith(t['title'])]
 assert bodies and len(accepted)>=before+1
 for body in bodies:
