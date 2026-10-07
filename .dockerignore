@@ -4,3 +4,8 @@ release
 secrets
 .env
 .env.*
+**/secrets
+**/.env
+ci-secrets
+ci-full-stack
+verification

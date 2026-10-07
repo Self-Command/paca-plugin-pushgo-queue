@@ -3,6 +3,8 @@
 This directory keeps the official v0.18.6 Compose and Caddy files unchanged. Their source SHA and file hashes
 are recorded in `official/upstream.json`. The overlay adds two independent workers and binds the gateway
 only to `127.0.0.1:18788`. No Paca core fork or server compilation is needed.
+The small Caddy wrapper trusts the existing Nginx forwarding headers on the private network and imports
+the unchanged official routes. Only trusted containers belong on this network.
 
 Download **deployment.tar.gz from a verified release**. It includes the Action-produced
 `official-images.json` and `compose.images.yaml`, pinning the official stack and infrastructure by digest.
@@ -43,7 +45,9 @@ docker compose --env-file .env -f official/docker-compose.yaml -f compose.plugin
    channel ID, channel display name and password. The Gateway token is never a browser or project setting.
 10. Verify the stack on localhost before changing production Nginx. The example `nginx-task.conf` keeps
     the shared certificate, HTTP ACME/redirect, websocket upgrade and unbuffered streaming. Define the
-    documented `map` once in the existing `http` context. Reuse actual existing ACME paths and certificate
+    documented `map` and webhook `limit_req_zone` once in the existing `http` context. The webhook limit
+    is 50 requests/second with a burst of 100; tune it for bulk imports and actual trusted proxy IP handling.
+    Reuse actual existing ACME paths and certificate
     names, run `nginx -t` against the active master's configuration, then reload that specific master.
     `push.spacedo.org`, Gateway WSS and Cabinet remain separate and unchanged.
 

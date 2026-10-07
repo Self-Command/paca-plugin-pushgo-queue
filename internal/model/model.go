@@ -37,6 +37,7 @@ type Config struct {
 }
 type Rule struct {
 	Enabled         bool       `json:"enabled"`
+	Timezone        string     `json:"timezone"`
 	StartEnabled    bool       `json:"start_enabled"`
 	DueEnabled      bool       `json:"due_enabled"`
 	Start           *time.Time `json:"start"`
@@ -105,7 +106,7 @@ func ValidConfig(c Config) bool {
 	if c.ChannelID == "" || len(c.ChannelID) > 64 || c.StartMinutes < 0 || c.StartMinutes > 1440 || c.DueMinutes < 0 || c.DueMinutes > 1440 {
 		return false
 	}
-	if _, err = time.LoadLocation(c.Timezone); err != nil {
+	if _, err = time.LoadLocation(c.Timezone); err != nil || c.Timezone == "" {
 		return false
 	}
 	for _, v := range c.PriorityMap {
@@ -184,6 +185,9 @@ func Compute(t Task, c Config, r *Rule, done bool) ([]Spec, string) {
 		}
 		if r.DueMinutes != nil {
 			dm = *r.DueMinutes
+		}
+		if r.Timezone != "" {
+			c.Timezone = r.Timezone
 		}
 		if r.BaseFingerprint == Fingerprint(t) {
 			if r.Start != nil {

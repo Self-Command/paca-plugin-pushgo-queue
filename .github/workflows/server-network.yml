@@ -1,0 +1,35 @@
+name: Read-only SSH network probe
+on:
+  workflow_dispatch:
+    inputs:
+      host:
+        description: Server explicitly authorized for inspection
+        required: true
+        type: string
+      port:
+        description: SSH port
+        default: '22'
+        type: string
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Read SSH greeting without credentials or login
+        env:
+          SERVER_HOST: ${{ inputs.host }}
+          SERVER_PORT: ${{ inputs.port }}
+        run: |
+          python3 - <<'PY'
+          import os,socket
+          host=os.environ['SERVER_HOST']
+          port=int(os.environ['SERVER_PORT'])
+          assert 1 <= port <= 65535
+          with socket.create_connection((host,port),timeout=15) as connection:
+              connection.settimeout(15)
+              greeting=connection.recv(512)
+              print('SSH greeting:',repr(greeting))
+              if not greeting.startswith(b'SSH-'): raise SystemExit('Connection closed before SSH greeting')
+          PY

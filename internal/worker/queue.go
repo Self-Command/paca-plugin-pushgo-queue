@@ -175,6 +175,9 @@ func (w *Worker) syncTask(ctx context.Context, s settings, t model.Task, done bo
 	var oldHash string
 	err = tx.QueryRow(ctx, "SELECT revision,fingerprint FROM plans WHERE project_id=$1 AND task_id=$2 FOR UPDATE", s.Project, t.ID).Scan(&revision, &oldHash)
 	if err == nil && oldHash == fingerprint {
+		if _, err = tx.Exec(ctx, "UPDATE plans SET updated_at=NOW() WHERE project_id=$1 AND task_id=$2", s.Project, t.ID); err != nil {
+			return err
+		}
 		return tx.Commit(ctx)
 	}
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {

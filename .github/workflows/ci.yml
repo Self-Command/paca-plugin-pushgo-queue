@@ -39,7 +39,7 @@ jobs:
           id=$(jq -r .id plugin.json)
           mkdir -p release/wasm/$id/migrations
           tinygo build -target=wasip1 -buildmode=c-shared -o release/wasm/$id/backend.wasm ./backend
-          cp plugin.json release/wasm/$id/
+          python3 scripts/stamp-manifest.py
           cp backend/migrations/*.sql release/wasm/$id/migrations/
       - uses: oven-sh/setup-bun@v2
         with:
@@ -49,6 +49,7 @@ jobs:
         run: |
           bun install --frozen-lockfile
           bun run typecheck
+          bunx tsc --noEmit --target ES2022 --module ESNext --moduleResolution bundler --lib ES2022,DOM --skipLibCheck ../mcp/index.ts
           bun run build
       - name: Package
         run: |
@@ -60,10 +61,10 @@ jobs:
           tar -czf release/assets/backend-wasm.tar.gz -C release/wasm/$id backend.wasm
           tar -czf release/assets/frontend-dist.tar.gz -C frontend dist
           tar -czf release/assets/migrations.tar.gz -C backend migrations
-          tar -czf release/assets/plugin-manifest.tar.gz plugin.json
+          tar -czf release/assets/plugin-manifest.tar.gz -C release/wasm/$id plugin.json
           tar -czf release/assets/mcp-dist.tar.gz -C release/mcp/$id mcp.js
           tar -czf release/assets/plugin-install.tar.gz -C release wasm frontend mcp
-          jq --arg sha "$GITHUB_SHA" --arg run "$GITHUB_RUN_ID" '. + {source_sha:$sha,action_run:$run}' plugin.json > release/assets/build-info.json
+          jq --arg sha "$GITHUB_SHA" --arg run "$GITHUB_RUN_ID" '. + {source_sha:$sha,action_run:$run}' release/wasm/$id/plugin.json > release/assets/build-info.json
           cd release/assets
           sha256sum *.tar.gz build-info.json > checksums.txt
       - uses: actions/upload-artifact@v4

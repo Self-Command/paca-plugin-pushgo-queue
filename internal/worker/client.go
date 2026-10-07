@@ -63,10 +63,6 @@ func New(ctx context.Context) (*Worker, error) {
 		return nil, err
 	}
 	cfg.RuntimeParams["search_path"] = Schema
-	db, err := pgx.ConnectConfig(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
 	publicURL := strings.TrimRight(os.Getenv("PUBLIC_URL"), "/")
 	public, err := url.Parse(publicURL)
 	if err != nil || public.Scheme != "https" || public.Host == "" || public.User != nil {
@@ -79,6 +75,10 @@ func New(ctx context.Context) (*Worker, error) {
 	encryption, err := readSecret("ENCRYPTION_KEY")
 	if err != nil || len(encryption) != 64 {
 		return nil, errors.New("ENCRYPTION_KEY_FILE required")
+	}
+	db, err := pgx.ConnectConfig(ctx, cfg)
+	if err != nil {
+		return nil, err
 	}
 	return &Worker{DB: db, API: base, Key: key, Secret: secret, HTTP: &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, PublicURL: publicURL, GatewayToken: gatewayToken, EncryptionKey: encryption}, nil
 }

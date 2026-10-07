@@ -1,7 +1,8 @@
 import hashlib, hmac, http.cookiejar, json, os, pathlib, secrets, subprocess, time, urllib.request, urllib.error
 
 ROOT=pathlib.Path(__file__).resolve().parent.parent
-manifest=json.loads((ROOT/'plugin.json').read_text())
+source_manifest=json.loads((ROOT/'plugin.json').read_text())
+manifest=json.loads((ROOT/f'release/wasm/{source_manifest["id"]}/plugin.json').read_text())
 plugin_id=manifest['id']
 password=secrets.token_urlsafe(24)
 new_password=secrets.token_urlsafe(24)
@@ -79,7 +80,7 @@ else: raise RuntimeError('Caddy did not become ready')
 
 outsider_password=secrets.token_urlsafe(24)
 outsider_new_password=secrets.token_urlsafe(24)
-request('POST','/admin/users',{'username':'ci-outsider','password':outsider_password,'full_name':'CI permission outsider'},201)
+outsider_user=request('POST','/admin/users',{'username':'ci-outsider','password':outsider_password,'full_name':'CI permission outsider'},201)['data']
 outsider_opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 def outsider(method,path,data):
     with outsider_opener.open(urllib.request.Request(base+path,data=json.dumps(data).encode(),method=method,headers={'Content-Type':'application/json'})) as r:
@@ -92,6 +93,16 @@ outsider_key=outsider('POST','/users/me/api-keys',{'name':'MCP outsider'})['data
 (secret_dir/'mcp-context.json').write_text(json.dumps({'base_url':'http://127.0.0.1:18080','gateway_url':'http://127.0.0.1:18081','api_key':api_key,'outsider_key':outsider_key,'project_id':project['id'],'task_id':native['id']}))
 (secret_dir/'mcp-context.json').chmod(0o600)
 cmd('bun','scripts/mcp-smoke.ts')
+reader_role=request('POST',f'/projects/{project["id"]}/roles',{'role_name':'CI core-only reader','permissions':{'tasks.read':True}},201)['data']
+request('POST',f'/projects/{project["id"]}/members',{'user_id':outsider_user['id'],'project_role_id':reader_role['id']},201)
+with urllib.request.urlopen(urllib.request.Request(base+f'/projects/{project["id"]}/tasks/{native["id"]}',headers={'X-API-Key':outsider_key}),timeout=20) as r: assert r.status==200
+try:
+    urllib.request.urlopen(urllib.request.Request(base+f'/plugins/{plugin_id}/projects/{project["id"]}/tasks/{native["id"]}/reminders',headers={'X-API-Key':outsider_key}),timeout=20)
+    raise AssertionError('Core-only reader escaped plugin permission')
+except urllib.error.HTTPError as error: assert error.code==403
+mcp_report=json.loads((verification/'mcp-report.json').read_text())
+mcp_report.update({'core_reader_kept':True,'custom_plugin_permission_enforced':True})
+(verification/'mcp-report.json').write_text(json.dumps(mcp_report,indent=2))
 from playwright.sync_api import sync_playwright
 with sync_playwright() as pw:
     browser=pw.chromium.launch()
@@ -106,9 +117,20 @@ with sync_playwright() as pw:
     page.goto(f'http://127.0.0.1:18081/projects/{project["id"]}/tasks/{native["id"]}',wait_until='domcontentloaded')
     page.get_by_role('button',name='保存精确提醒',exact=True).wait_for(timeout=30000)
     page.get_by_label('精确开始时间',exact=True).fill(instant(86400))
-    page.get_by_role('button',name='保存精确提醒',exact=True).click()
+    with page.expect_response(lambda r:r.request.method=='PUT' and r.url.endswith('/reminders')) as saved_response:
+        page.get_by_role('button',name='保存精确提醒',exact=True).click()
+    assert saved_response.value.status==202,'Reminder UI save failed'
+    page.get_by_role('status').filter(has_text='等待队列更新').wait_for(timeout=10000)
+    assert request('GET',f'/plugins/{plugin_id}/projects/{project["id"]}/tasks/{native["id"]}/reminders')['rule']['timezone']=='Asia/Shanghai'
     page.screenshot(path=str(verification/'task-reminder.png'),full_page=True)
     browser.close()
+request('PATCH',f'/admin/plugins/{installed["id"]}',{'manifest':manifest,'version':manifest['version'],'enabled':True})
+assert request('GET',f'/plugins/{plugin_id}/health')['schema_version']==3
+request('DELETE',f'/admin/plugins/{installed["id"]}',expected=204)
+request('GET',f'/plugins/{plugin_id}/health',expected=404)
+request('GET',f'/projects/{project["id"]}/tasks/{task["id"]}')
+request('GET','/plugins/com.selfcommand.tasknotes-webhook/health')
 report={'official_paca':'0.18.6','plugin':plugin_id,'migration':True,'wasm':True,'worker_hmac':True,'nonce_replay_rejected':True,'frontend_host':True,'task_crud':True,'disable_enable':True,'restart':True}
+report.update({'manifest_reload':True,'uninstall_preserves_core_and_other_plugin':True,'task_time_zone_persisted':True,'task_panel_save':True})
 (verification/'host-report.json').write_text(json.dumps(report,indent=2))
 print(json.dumps({'official_paca':'0.18.6','plugin':plugin_id,'migration':True,'wasm':True,'task_crud':True,'disable_enable':True,'restart':True}))

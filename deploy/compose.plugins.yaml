@@ -13,7 +13,8 @@ services:
     environment:
       SITE_ADDRESS: ':80'
     volumes:
-      - ${PACA_DEPLOY_ROOT:?}/official/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${PACA_DEPLOY_ROOT:?}/caddy-wrapper.Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${PACA_DEPLOY_ROOT:?}/official/caddy/Caddyfile:/etc/caddy/upstream.Caddyfile:ro
       - ${PACA_DEPLOY_ROOT:?}/plugins/frontend:/var/www/plugins:ro
       - ${PACA_DEPLOY_ROOT:?}/plugins/mcp:/var/www/plugins-mcp:ro
       - ${PACA_DEPLOY_ROOT:?}/plugins/skills:/var/www/plugins-skills:ro

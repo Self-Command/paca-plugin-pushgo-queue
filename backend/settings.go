@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"time"
 
 	plugin "github.com/Paca-AI/plugin-sdk-go"
 	"github.com/Self-Command/paca-plugin-pushgo-queue/internal/model"
@@ -85,12 +86,15 @@ func (p *integrationPlugin) reminders(req *plugin.Request, res *plugin.Response)
 		_ = json.Unmarshal([]byte(fmt.Sprint(rows.Rows[0][0])), &rule)
 		revision = rows.Rows[0][1]
 	}
-	plans, err := p.db.Query("SELECT state,revision,updated_at::text FROM plans WHERE project_id=$1 AND task_id=$2", req.PathParam("projectId"), req.PathParam("taskId"))
+	plans, err := p.db.Query("SELECT CASE WHEN p.updated_at < COALESCE((SELECT r.updated_at FROM task_rules r WHERE r.project_id=p.project_id AND r.task_id=p.task_id),p.updated_at) THEN 'awaiting_reconciliation' ELSE p.state END,p.revision,p.updated_at::text FROM plans p WHERE p.project_id=$1 AND p.task_id=$2", req.PathParam("projectId"), req.PathParam("taskId"))
 	if err != nil {
 		res.Error(503, "plan unavailable")
 		return
 	}
 	plan := any(nil)
+	if rule != nil {
+		plan = map[string]any{"state": "awaiting_reconciliation"}
+	}
 	if len(plans.Rows) == 1 {
 		r := plans.Rows[0]
 		plan = map[string]any{"state": r[0], "revision": r[1], "updated_at": r[2]}
@@ -120,6 +124,10 @@ func (p *integrationPlugin) setReminders(req *plugin.Request, res *plugin.Respon
 			return
 		}
 	}
+	if _, err := time.LoadLocation(input.Timezone); err != nil || input.Timezone == "" {
+		res.Error(400, "valid IANA timezone required")
+		return
+	}
 	start, err := model.ParseTime(input.Start, input.Timezone)
 	if err != nil {
 		res.Error(400, err.Error())
@@ -134,7 +142,7 @@ func (p *integrationPlugin) setReminders(req *plugin.Request, res *plugin.Respon
 		res.Error(400, "due time cannot precede start time")
 		return
 	}
-	rule := model.Rule{Enabled: input.Enabled, StartEnabled: input.StartEnabled, DueEnabled: input.DueEnabled, Start: start, Due: due, StartMinutes: input.StartMinutes, DueMinutes: input.DueMinutes, BaseFingerprint: model.Fingerprint(input.BaseTask)}
+	rule := model.Rule{Enabled: input.Enabled, Timezone: input.Timezone, StartEnabled: input.StartEnabled, DueEnabled: input.DueEnabled, Start: start, Due: due, StartMinutes: input.StartMinutes, DueMinutes: input.DueMinutes, BaseFingerprint: model.Fingerprint(input.BaseTask)}
 	cfg, _ := json.Marshal(rule)
 	n, err := p.db.Exec("INSERT INTO task_rules(project_id,task_id,config) SELECT $1,$2,$3::jsonb WHERE $4=0 ON CONFLICT(project_id,task_id) DO NOTHING", req.PathParam("projectId"), req.PathParam("taskId"), string(cfg), input.Revision)
 	if input.Revision > 0 {

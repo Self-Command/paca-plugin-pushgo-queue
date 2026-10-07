@@ -1,0 +1,15 @@
+{
+  "paca_version": "v0.18.6",
+  "source_sha": "6791ae2c8cc1a893b0c6799cf7d24df303e8e0b0",
+  "images": {
+    "PACA_API_IMAGE": "pacaai/paca-api@sha256:42b36fcb167f39bf07c04464b6d71ea49b1f7a8a745a2e9391623e76c5a17ad9",
+    "PACA_WEB_IMAGE": "pacaai/paca-web@sha256:c65dc2fa6384be8bbafdda9a220d525d54c730f63f2a0e0b4c167c7bb9452995",
+    "PACA_REALTIME_IMAGE": "pacaai/paca-realtime@sha256:f00e1f6d7fe5a318fac7e9f9946ebdead01ecf11d7626c4f90b7d2fc7efc2e76",
+    "PACA_AGENT_RUNNER_IMAGE": "pacaai/paca-agent-runner@sha256:ef9520b728654e03b821567cf8b1ef7e6626cb7ca8851fe04e869b08ca60dc42",
+    "AGENT_SERVER_IMAGE": "ghcr.io/paca-ai/paca-agent-server-goose@sha256:a6f5fae8a637268c504f0cb017490f700c278130c1e88194d83fed5e9ca0ebdb",
+    "postgres": "postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+    "valkey": "valkey/valkey@sha256:081c2f5cb575efc901aa80ff9cdbd1ec6a301682fd35e1ebb4b0990a4a4a8507",
+    "rustfs": "rustfs/rustfs@sha256:97171b3d72cd47dc81000f92ea84de25608bfc35a94c965501afaeb5d99f6035",
+    "gateway": "caddy@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f"
+  }
+}

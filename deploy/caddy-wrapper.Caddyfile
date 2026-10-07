@@ -1,0 +1,8 @@
+# Existing host Nginx terminates TLS and reaches Caddy from the private Docker network.
+{
+    servers {
+        trusted_proxies static private_ranges
+        trusted_proxies_strict
+    }
+}
+import /etc/caddy/upstream.Caddyfile
