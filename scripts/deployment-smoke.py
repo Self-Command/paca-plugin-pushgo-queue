@@ -29,6 +29,11 @@ for key in ['POSTGRES_PASSWORD','ADMIN_PASSWORD','JWT_SECRET','ENCRYPTION_KEY','
 envfile=stage/'runtime.env'
 envfile.write_text(''.join(f'{key}={value}\n' for key,value in config.items()))
 envfile.chmod(0o600)
+certs=stage/'test-certificates'
+certs.mkdir(mode=0o700,exist_ok=True)
+subprocess.run(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-keyout',str(certs/'privkey.pem'),'-out',str(certs/'fullchain.pem'),'-days','1','-subj','/CN=task.spacedo.org'],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+(stage/'nginx.conf').write_text('events {}\nhttp {\n map $http_upgrade $paca_connection_upgrade { default upgrade; "" close; }\n include /etc/nginx/task.conf;\n}\n')
+subprocess.run(['docker','run','--rm','-v',f'{stage}/nginx.conf:/etc/nginx/nginx.conf:ro','-v',f'{deploy}/nginx-task.conf:/etc/nginx/task.conf:ro','-v',f'{certs}:/etc/letsencrypt/live/tasknotes-pushgo-spacedo:ro','nginx:1.18','nginx','-t'],check=True)
 compose=['docker','compose','--project-name','paca-ci-full','--env-file',str(envfile),'-f',str(stage/'official/docker-compose.yaml'),'-f',str(deploy/'compose.plugins.yaml'),'-f',str(verification/'compose.images.yaml')]
 rendered=json.loads(subprocess.check_output(compose+['config','--format','json'],text=True))
 ports=[p for s in rendered['services'].values() for p in s.get('ports',[])]
@@ -71,5 +76,5 @@ request('GET',f'/projects/{project["id"]}/conversations')
 manifest=json.loads((ROOT/'plugin.json').read_text())
 request('POST','/admin/plugins',{'name':manifest['id'],'version':manifest['version'],'manifest':manifest,'enabled':True})
 assert request('GET',f'/plugins/{manifest["id"]}/health')['schema_version']==3
-(verification/'deployment-report.json').write_text(json.dumps({'unchanged_upstream':upstream['source_sha'],'official_images_pinned':True,'loopback_only':True,'official_task_crud':True,'original_attachment_upload_download':True,'realtime_websocket_auth':True,'ai_routes_preserved':True,'agent_concurrency':1,'actual_model_chat':'not_executed_requires_model_configuration','plugins_on_full_stack':True},indent=2))
+(verification/'deployment-report.json').write_text(json.dumps({'unchanged_upstream':upstream['source_sha'],'official_images_pinned':True,'nginx_118_syntax':True,'loopback_only':True,'official_task_crud':True,'original_attachment_upload_download':True,'realtime_websocket_auth':True,'ai_routes_preserved':True,'agent_concurrency':1,'actual_model_chat':'not_executed_requires_model_configuration','plugins_on_full_stack':True},indent=2))
 subprocess.run(compose+['down'],check=True)
