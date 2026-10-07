@@ -96,3 +96,8 @@ See the Action's `host-verification` report for actual results and remaining dev
 设置及投递页面复用固定版本 shadcn/ui 原组件，所有状态与字段使用中文说明；开发编号、内部状态枚举、SQL 错误和操作 ID 保留在鉴权接口和诊断记录，不显示到日常页面。
 
 数据库访问为每个插件加独立查询标识，避免官方宿主共享 PostgreSQL 连接池在切换 schema 后复用其他插件的缓存执行计划。保持独立 schema、角色和 API 边界，使用三个插件的匹配发行产物。
+
+
+## WASM 凭据与重载
+
+WASM 后端的随机编号、配对令牌、worker 凭据及 AES-GCM nonce 使用原生 PostgreSQL 的随机 UUID 组合获取新鲜随机数据，避免模块状态恢复后复用历史序列。无需额外数据库扩展；原密文格式保持兼容。原生 Go worker 保留操作系统随机源。Action 包含错误时拒绝生成凭据的检查，打卡插件另验收连续配对、撤销后重新配对、模块重载与宿主重启。

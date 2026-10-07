@@ -2,7 +2,7 @@
 import hashlib, io, json, pathlib, tarfile, urllib.request,urllib.error,time
 
 root=pathlib.Path(__file__).resolve().parent.parent
-release='https://github.com/Self-Command/paca-plugin-tasknotes-webhook/releases/download/v0.1.0-dev.50/'
+release='https://github.com/Self-Command/paca-plugin-tasknotes-webhook/releases/download/v0.1.0-dev.51/'
 def get(name):
     for attempt in range(90):
         try:
@@ -15,20 +15,20 @@ package=get('plugin-install.tar.gz')
 expected=next(line.split()[0] for line in checksums.splitlines() if line.endswith('plugin-install.tar.gz'))
 assert hashlib.sha256(package).hexdigest()==expected
 info=json.loads(get('build-info.json'))
-assert info['source_sha']=='b82b60b89378447d4a56d82df2cbc4a12a54a4bb'
-info['release']='v0.1.0-dev.50'
+assert info['source_sha']=='60ead1b6d785a9e38bc794ed93a5e2159e8b5f53'
+info['release']='v0.1.0-dev.51'
 with tarfile.open(fileobj=io.BytesIO(package),mode='r:gz') as archive:
     archive.extractall(root/'release',filter='data')
 (root/'pair-image.txt').write_bytes(get('image-digest.txt'))
 (root/'pair-info.json').write_text(json.dumps(info))
 
 # C remains a separately built, checksum-verified official plugin package.
-release='https://github.com/Self-Command/paca-plugin-task-checkin/releases/download/v0.1.0-dev.24/'
+release='https://github.com/Self-Command/paca-plugin-task-checkin/releases/download/v0.1.0-dev.25/'
 checksums=get('checksums.txt').decode();package=get('plugin-install.tar.gz')
 expected=next(line.split()[0] for line in checksums.splitlines() if line.endswith('plugin-install.tar.gz'))
 assert hashlib.sha256(package).hexdigest()==expected
 checkin_info=json.loads(get('build-info.json'))
-assert checkin_info['source_sha']=='73026ed43e1a868a2e010300aedfcf6074880672'
+assert checkin_info['source_sha']=='82e238a1b4cc768aa2cf9224ac1c8c5b3614aeda'
 with tarfile.open(fileobj=io.BytesIO(package),mode='r:gz') as archive:archive.extractall(root/'release',filter='data')
 (root/'checkin-image.txt').write_bytes(get('image-digest.txt'))
 (root/'checkin-info.json').write_text(json.dumps(checkin_info))
