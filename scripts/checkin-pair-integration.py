@@ -49,6 +49,7 @@ except Exception:
     (verification/'checkin-pair-host.log').write_text(subprocess.check_output(['docker','logs','paca-ci-api','--tail','120'],stderr=subprocess.STDOUT).decode())
     probe={ 'b_health':request('GET',f'/plugins/{plugin_id}/health'),'c_health':request('GET',f'/plugins/{cid}/health'),'settings':request('GET',f'/plugins/{plugin_id}/projects/{project["id"]}/settings'),'jobs':queue() }
     candidates=request('GET',f'/projects/{project["id"]}/tasks?page_size=200')['data']['items']
+    probe['c_control_schema']=subprocess.check_output(['docker','exec','paca-ci-db','psql','-U','postgres','-d','paca','-Atc','SELECT count(*),bool_and(enabled) FROM plugin_data_com_selfcommand_task_checkin.worker_settings'],text=True).strip()
     probe['task_plans']=[]
     for candidate in candidates:
         req=urllib.request.Request('http://127.0.0.1:19092/internal/v1/task',data=json.dumps({'project_id':project['id'],'task_id':candidate['id']}).encode(),method='POST',headers={'Content-Type':'application/json','Authorization':'Bearer '+action_secret})
