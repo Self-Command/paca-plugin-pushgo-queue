@@ -133,7 +133,8 @@ assert len(accepted)==4
 deleted=core_task('Deleted task cancels pending reminder')
 configure(deleted,instant(3600))
 wait_state(deleted['id'],'scheduled')
-request('DELETE',f'/projects/{project["id"]}/tasks/{deleted["id"]}',expected=204)
+request('DELETE',f'/projects/{project["id"]}/tasks/{deleted["id"]}')
+request('GET',f'/projects/{project["id"]}/tasks/{deleted["id"]}',expected=404)
 wait_state(deleted['id'],'cancelled')
 for flag in ['archived','recurring']:
     t=core_task('Source '+flag+' cancels pending reminder')
