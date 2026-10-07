@@ -32,7 +32,7 @@ type Worker struct {
 	API, Key, Secret                       string
 	HTTP                                   *http.Client
 	PublicURL, GatewayToken, EncryptionKey string
- CheckinURL, CheckinSecret string
+	CheckinURL, CheckinSecret              string
 }
 type apiError struct{ Code int }
 
@@ -78,14 +78,18 @@ func New(ctx context.Context) (*Worker, error) {
 		return nil, errors.New("ENCRYPTION_KEY_FILE required")
 	}
 	checkinURL := strings.TrimRight(os.Getenv("CHECKIN_WORKER_URL"), "/")
- checkinSecret := ""
- if checkinURL != "" {
-  checkin, parseErr := url.Parse(checkinURL)
-  if parseErr != nil || checkin.Host == "" || checkin.User != nil || checkin.RawQuery != "" || checkin.Fragment != "" || checkin.Path != "" || (checkin.Scheme != "http" && checkin.Scheme != "https") { return nil, errors.New("fixed CHECKIN_WORKER_URL origin required") }
-  checkinSecret, err = readSecret("CHECKIN_SERVICE_SECRET")
-  if err != nil || len(checkinSecret) != 64 { return nil, errors.New("CHECKIN_SERVICE_SECRET_FILE required") }
- }
- db, err := pgx.ConnectConfig(ctx, cfg)
+	checkinSecret := ""
+	if checkinURL != "" {
+		checkin, parseErr := url.Parse(checkinURL)
+		if parseErr != nil || checkin.Host == "" || checkin.User != nil || checkin.RawQuery != "" || checkin.Fragment != "" || checkin.Path != "" || (checkin.Scheme != "http" && checkin.Scheme != "https") {
+			return nil, errors.New("fixed CHECKIN_WORKER_URL origin required")
+		}
+		checkinSecret, err = readSecret("CHECKIN_SERVICE_SECRET")
+		if err != nil || len(checkinSecret) != 64 {
+			return nil, errors.New("CHECKIN_SERVICE_SECRET_FILE required")
+		}
+	}
+	db, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}

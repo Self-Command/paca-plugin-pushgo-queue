@@ -14,29 +14,29 @@ import (
 )
 
 type Task struct {
-	ID         string         `json:"id"`
-	ProjectID  string         `json:"project_id"`
-	Title      string         `json:"title"`
-	StatusID   string         `json:"status_id"`
-	Importance int            `json:"importance"`
-	Start      *time.Time     `json:"start_date"`
-	Due        *time.Time     `json:"due_date"`
-	CreatedAt  time.Time      `json:"created_at"`
-	Custom     map[string]any `json:"custom_fields"`
- Description any `json:"description"`
- Tags []string `json:"tags"`
+	ID          string         `json:"id"`
+	ProjectID   string         `json:"project_id"`
+	Title       string         `json:"title"`
+	StatusID    string         `json:"status_id"`
+	Importance  int            `json:"importance"`
+	Start       *time.Time     `json:"start_date"`
+	Due         *time.Time     `json:"due_date"`
+	CreatedAt   time.Time      `json:"created_at"`
+	Custom      map[string]any `json:"custom_fields"`
+	Description any            `json:"description"`
+	Tags        []string       `json:"tags"`
 }
 type Config struct {
-	Enabled      bool              `json:"enabled"`
-	GatewayURL   string            `json:"gateway_url"`
-	ChannelID    string            `json:"channel_id"`
-	ChannelName  string            `json:"channel_name"`
-	Timezone     string            `json:"timezone"`
-	StartMinutes int               `json:"start_minutes"`
-	DueMinutes   int               `json:"due_minutes"`
-	CreatedPush  bool              `json:"created_push"`
- CheckinEnabled bool `json:"checkin_enabled"`
-	PriorityMap  map[string]string `json:"priority_map"`
+	Enabled        bool              `json:"enabled"`
+	GatewayURL     string            `json:"gateway_url"`
+	ChannelID      string            `json:"channel_id"`
+	ChannelName    string            `json:"channel_name"`
+	Timezone       string            `json:"timezone"`
+	StartMinutes   int               `json:"start_minutes"`
+	DueMinutes     int               `json:"due_minutes"`
+	CreatedPush    bool              `json:"created_push"`
+	CheckinEnabled bool              `json:"checkin_enabled"`
+	PriorityMap    map[string]string `json:"priority_map"`
 }
 type Rule struct {
 	Enabled         bool       `json:"enabled"`
@@ -242,4 +242,4 @@ func OpID(project, task string, s Spec) string {
 	return "paca_" + Hash(strings.Join([]string{project, task, s.Kind, s.Target.UTC().Format(time.RFC3339Nano), s.Binding}, "\n"))
 }
 
-func Precise(t Task,kind string,value *time.Time)*time.Time{return precision(t,kind,value)}
+func Precise(t Task, kind string, value *time.Time) *time.Time { return precision(t, kind, value) }
