@@ -15,6 +15,9 @@ cmd('openssl','req','-x509','-newkey','rsa:2048','-nodes','-keyout',str(secret_d
 accepted={}
 submissions=[]
 lost_response=False
+transient_requests=[]
+lease_received=threading.Event()
+lease_release=threading.Event()
 class Gateway(BaseHTTPRequestHandler):
     def log_message(self,*args): pass
     def do_POST(self):
@@ -26,9 +29,21 @@ class Gateway(BaseHTTPRequestHandler):
         assert 'message_id' not in body and len(body['op_id'])<=128
         assert body['ttl']>int(time.time()*1000)
         stable={k:v for k,v in body.items() if k not in ('password',)}
+        if body['title'].endswith('Transient HTTP failures'):
+            transient_requests.append((time.monotonic(),stable))
+            if len(transient_requests)<=2:
+                self.send_response(429 if len(transient_requests)==1 else 503)
+                self.send_header('Retry-After','2')
+                self.end_headers()
+                self.wfile.write(b'{"error":"ci temporary failure"}')
+                return
         if body['op_id'] in accepted: assert accepted[body['op_id']]==stable,'operation payload changed during retry'
         accepted[body['op_id']]=stable
         submissions.append(body)
+        if body['title'].endswith('Crash during accepted submit') and not lease_received.is_set():
+            lease_received.set()
+            lease_release.wait(timeout=90)
+            return
         if not lost_response:
             lost_response=True
             self.connection.shutdown(2)
@@ -60,7 +75,7 @@ def configure(t,start,revision=0,enabled=True):
 def queue():
     return request('GET',f'/plugins/{plugin_id}/projects/{project["id"]}/jobs')['items']
 def wait_state(task_id,state):
-    for _ in range(120):
+    for _ in range(180):
         rows=[j for j in queue() if j['task_id']==task_id]
         if any(j['state']==state for j in rows):return rows
         time.sleep(0.5)
@@ -149,6 +164,31 @@ assert len(accepted)==4,'disabled host allowed Gateway submit'
 request('PATCH',f'/admin/plugins/{installed["id"]}',{'enabled':True})
 wait_state(paused['id'],'gateway_accepted')
 assert len(accepted)==5
+# Both HTTP throttling and a server failure retry the same frozen operation.
+transient=core_task('Transient HTTP failures')
+configure(transient,instant(603))
+wait_state(transient['id'],'gateway_accepted')
+assert len(transient_requests)==3
+assert transient_requests[0][1]==transient_requests[1][1]==transient_requests[2][1]
+assert transient_requests[1][0]-transient_requests[0][0]>=2,'Retry-After was ignored'
+assert len(accepted)==6
+
+# An accepted request followed by SIGKILL recovers only after the persisted lease expires.
+crashed=core_task('Crash during accepted submit')
+configure(crashed,instant(603))
+assert lease_received.wait(timeout=60),'Crash fixture did not receive its first submit'
+worker_process.kill();worker_process.wait(timeout=10)
+lease_release.set()
+crash_job=next(j for j in queue() if j['task_id']==crashed['id'])
+assert crash_job['state']=='sending'
+assert len(accepted)==7
+worker_process=subprocess.Popen(['/tmp/pushgo-worker'],env=worker_env,stdout=log,stderr=log)
+wait_state(crashed['id'],'gateway_accepted')
+assert len(accepted)==7,'Lease recovery created an extra Gateway message'
+assert sum(b['op_id']==crash_job['op_id'] for b in submissions)==2
+sql=f"SELECT generation FROM plugin_data_com_selfcommand_pushgo_queue.jobs WHERE op_id='{crash_job['op_id']}'"
+generation=subprocess.check_output(['docker','exec','paca-ci-db','psql','-U','postgres','-d','paca','-Atc',sql],text=True).strip()
+assert int(generation)>=2,'Expired lease was not reclaimed with a new generation'
 worker_process.terminate();worker_process.wait(timeout=10)
 log.close();server.shutdown()
-(verification/'queue-report.json').write_text(json.dumps({'concurrent_workers_no_extra_submissions':True,'delete_cancels':True,'archive_cancels':True,'recurrence_not_expanded':True,'cleared_date_invalidates_confirmation':True,'native_date_requires_confirmation':True,'four_levels':True,'absolute_ttl':True,'same_op_id_after_lost_response':True,'reschedule_supersedes':True,'restart_no_duplicate':True,'complete_cancels':True,'expired_no_delivery':True,'project_disable_enable_recovers':True,'host_disable_pauses_gateway':True},indent=2))
+(verification/'queue-report.json').write_text(json.dumps({'http_429_503_same_operation_retry':True,'retry_after_respected':True,'crash_recovers_expired_lease':True,'new_lease_generation':True,'concurrent_workers_no_extra_submissions':True,'delete_cancels':True,'archive_cancels':True,'recurrence_not_expanded':True,'cleared_date_invalidates_confirmation':True,'native_date_requires_confirmation':True,'four_levels':True,'absolute_ttl':True,'same_op_id_after_lost_response':True,'reschedule_supersedes':True,'restart_no_duplicate':True,'complete_cancels':True,'expired_no_delivery':True,'project_disable_enable_recovers':True,'host_disable_pauses_gateway':True},indent=2))
