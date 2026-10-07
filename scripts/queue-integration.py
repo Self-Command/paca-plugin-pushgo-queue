@@ -109,6 +109,27 @@ configure(expired,instant(-5))
 wait_state(expired['id'],'expired')
 assert len(accepted)==4
 
+# Deletion, source archive/recurrence and cleared dates invalidate pending jobs.
+deleted=core_task('Deleted task cancels pending reminder')
+configure(deleted,instant(3600))
+wait_state(deleted['id'],'scheduled')
+request('DELETE',f'/projects/{project["id"]}/tasks/{deleted["id"]}',expected=204)
+wait_state(deleted['id'],'cancelled')
+for flag in ['archived','recurring']:
+    t=core_task('Source '+flag+' cancels pending reminder')
+    configure(t,instant(3600))
+    wait_state(t['id'],'scheduled')
+    request('PATCH',f'/projects/{project["id"]}/tasks/{t["id"]}',{'custom_fields':{'_integration_state_v1':{flag:True}}})
+    wait_state(t['id'],'superseded')
+cleared=core_task('Cleared core date invalidates confirmation')
+request('PATCH',f'/projects/{project["id"]}/tasks/{cleared["id"]}',{'start_date':instant(86400)})
+configure(cleared,instant(3600))
+wait_state(cleared['id'],'scheduled')
+request('PATCH',f'/projects/{project["id"]}/tasks/{cleared["id"]}',{'start_date':None})
+wait_state(cleared['id'],'superseded')
+assert not any(j['state'] in ('scheduled','retry_wait','sending') for j in queue() if j['task_id'] in (deleted['id'],cleared['id']))
+assert len(accepted)==4
+
 # Project rule and host disable both pause work; re-enable recovers the same job.
 paused=core_task('Disable and recover one reminder')
 configure(paused,instant(625))
@@ -125,4 +146,4 @@ wait_state(paused['id'],'gateway_accepted')
 assert len(accepted)==5
 worker_process.terminate();worker_process.wait(timeout=10)
 log.close();server.shutdown()
-(verification/'queue-report.json').write_text(json.dumps({'native_date_requires_confirmation':True,'four_levels':True,'absolute_ttl':True,'same_op_id_after_lost_response':True,'reschedule_supersedes':True,'restart_no_duplicate':True,'complete_cancels':True,'expired_no_delivery':True,'project_disable_enable_recovers':True,'host_disable_pauses_gateway':True},indent=2))
+(verification/'queue-report.json').write_text(json.dumps({'delete_cancels':True,'archive_cancels':True,'recurrence_not_expanded':True,'cleared_date_invalidates_confirmation':True,'native_date_requires_confirmation':True,'four_levels':True,'absolute_ttl':True,'same_op_id_after_lost_response':True,'reschedule_supersedes':True,'restart_no_duplicate':True,'complete_cancels':True,'expired_no_delivery':True,'project_disable_enable_recovers':True,'host_disable_pauses_gateway':True},indent=2))
