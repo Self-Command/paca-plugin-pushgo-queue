@@ -22,7 +22,7 @@
     },
     {
       "key": "pushgo_queue.worker_manage",
-      "label": "Manage companion worker credentials",
+      "label": "管理提醒服务连接",
       "scope": "global"
     }
   ],
