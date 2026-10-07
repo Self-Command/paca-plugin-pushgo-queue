@@ -137,15 +137,17 @@ func (w *Worker) reconcile(ctx context.Context, project string) error {
 	}
 	// Only a complete listing can cancel missing tasks.
 	seen := []string{}
-    taskError := ""
-    for _, task := range tasks {
-        // A blocked task must not starve unrelated reminders. Dispatch still checks
-        // that individual task and C again before any external submission.
-        if err = w.syncTask(ctx, s, task, done[task.StatusID]); err != nil {
-            if taskError == "" { taskError = safeError(err) }
-        }
-        seen = append(seen, task.ID)
-    }
+	taskError := ""
+	for _, task := range tasks {
+		// A blocked task must not starve unrelated reminders. Dispatch still checks
+		// that individual task and C again before any external submission.
+		if err = w.syncTask(ctx, s, task, done[task.StatusID]); err != nil {
+			if taskError == "" {
+				taskError = safeError(err)
+			}
+		}
+		seen = append(seen, task.ID)
+	}
 	tx, err := w.DB.Begin(ctx)
 	if err != nil {
 		return err
