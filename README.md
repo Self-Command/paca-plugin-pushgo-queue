@@ -7,7 +7,7 @@ The current phase-2 candidate is undergoing Action acceptance. Earlier phase-0 r
 
 - Project channel binding, encrypted channel password, default start/due lead minutes and configurable priority mapping.
 - Generic precise-time confirmation in task details and three caller-scoped MCP tools.
-- Native Paca date-only values remain pending until confirmed. Explicit integration precision is accepted only when it matches the current core instant.
+- Native Paca date-only values remain pending until confirmed. Paca uses SQL DATE: accurate integration instants live in metadata and must match the recorded current calendar day and timezone.
 - Persistent plans and jobs, transactional revision replacement, leases with owner/generation, stable logical `op_id` and absolute expiry.
 - Task events prompt reconciliation; a complete official REST listing runs periodically. Incomplete listings never cancel unseen tasks.
 - Re-read the core task and status immediately before submission. Completed, deleted, disabled or source-archived tasks stop future reminders.
@@ -67,7 +67,7 @@ plugin routes with the same key. It never substitutes the worker's identity. Unk
 
 No recurring schedule expansion, check-in, statistics or photos in this release.
 Generic integration metadata uses `_integration_state_v1` with `start_precision`, `due_precision`,
-matching `start_instant` / `due_instant`, `archived` and `recurring` values; this is a public task field,
+`start_instant` / `due_instant`, matching `start_core_date` / `due_core_date` and `timezone`, `archived` and `recurring` values; this is a public task field,
 not a dependency on the TaskNotes plugin's private schema.
 
 Network/429/5xx failures retry with capped backoff and expiry. Definitive configuration failures stop automatic

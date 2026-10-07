@@ -67,7 +67,7 @@ func Meta(t Task) map[string]any {
 }
 func Fingerprint(t Task) string {
 	m := Meta(t)
-	return Hash(map[string]any{"start": instant(t.Start), "due": instant(t.Due), "start_source": m["start_source"], "due_source": m["due_source"], "start_precision": m["start_precision"], "due_precision": m["due_precision"], "start_instant": m["start_instant"], "due_instant": m["due_instant"]})
+	return Hash(map[string]any{"start": instant(t.Start), "due": instant(t.Due), "start_source": m["start_source"], "due_source": m["due_source"], "start_precision": m["start_precision"], "due_precision": m["due_precision"], "start_instant": m["start_instant"], "due_instant": m["due_instant"], "start_core_date": m["start_core_date"], "due_core_date": m["due_core_date"], "timezone": m["timezone"]})
 }
 func instant(t *time.Time) any {
 	if t == nil {
@@ -82,10 +82,16 @@ func precision(t Task, kind string, core *time.Time) *time.Time {
 	}
 	v, _ := m[kind+"_instant"].(string)
 	parsed, err := time.Parse(time.RFC3339Nano, v)
-	if err != nil || !parsed.Equal(*core) {
+	if err != nil {
 		return nil
 	}
-	target := core.UTC()
+	day, _ := m[kind+"_core_date"].(string)
+	zone, _ := m["timezone"].(string)
+	loc, err := time.LoadLocation(zone)
+	if err != nil || day == "" || day != core.UTC().Format("2006-01-02") || day != parsed.In(loc).Format("2006-01-02") {
+		return nil
+	}
+	target := parsed.UTC()
 	return &target
 }
 func DefaultConfig() Config {

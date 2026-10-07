@@ -5,20 +5,21 @@ import (
 	"time"
 )
 
-func TestPrecisionMustMatchCurrentCoreTime(t *testing.T) {
+func TestPrecisionMustMatchCurrentCoreDate(t *testing.T) {
 	at := time.Date(2026, 10, 7, 1, 0, 0, 0, time.UTC)
-	task := Task{Start: &at, Title: "Task"}
+	day := time.Date(2026, 10, 7, 0, 0, 0, 0, time.UTC)
+	task := Task{Start: &day, Title: "Task"}
 	c := DefaultConfig()
 	specs, state := Compute(task, c, nil, false)
 	if len(specs) != 0 || state != "awaiting_precise_time" {
 		t.Fatal("native date needs confirmation")
 	}
-	task.Custom = map[string]any{"_integration_state_v1": map[string]any{"start_precision": "instant", "start_instant": at.Format(time.RFC3339)}}
+	task.Custom = map[string]any{"_integration_state_v1": map[string]any{"start_precision": "instant", "start_instant": at.Format(time.RFC3339), "start_core_date": "2026-10-07", "timezone": "Asia/Shanghai"}}
 	specs, _ = Compute(task, c, nil, false)
 	if len(specs) != 1 || !specs[0].Fire.Equal(at.Add(-10*time.Minute)) {
 		t.Fatal("proven instant not scheduled")
 	}
-	newer := at.Add(time.Hour)
+	newer := day.Add(24*time.Hour)
 	task.Start = &newer
 	specs, _ = Compute(task, c, nil, false)
 	if len(specs) != 0 {

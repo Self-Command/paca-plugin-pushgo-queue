@@ -1,0 +1,71 @@
+# Overlay for the unchanged pinned upstream Compose. Requires Compose >= 2.24.4.
+name: paca-task-platform
+services:
+  api:
+    volumes:
+      - ${PACA_DEPLOY_ROOT:?}/plugins/wasm:/plugins
+      - ${PACA_DEPLOY_ROOT:?}/plugins/frontend:/plugins-frontend
+      - ${PACA_DEPLOY_ROOT:?}/plugins/mcp:/plugins-mcp
+      - ${PACA_DEPLOY_ROOT:?}/plugins/skills:/plugins-skills
+  gateway:
+    ports: !override
+      - '127.0.0.1:18788:80'
+    environment:
+      SITE_ADDRESS: ':80'
+    volumes:
+      - ${PACA_DEPLOY_ROOT:?}/official/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${PACA_DEPLOY_ROOT:?}/plugins/frontend:/var/www/plugins:ro
+      - ${PACA_DEPLOY_ROOT:?}/plugins/mcp:/var/www/plugins-mcp:ro
+      - ${PACA_DEPLOY_ROOT:?}/plugins/skills:/var/www/plugins-skills:ro
+  agent-runner:
+    environment:
+      WORKER_CONCURRENCY: '1'
+  tasknotes-worker:
+    profiles: [tasknotes]
+    image: ${TASKNOTES_WORKER_IMAGE:?Use the matching release image digest}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      PACA_API_URL: http://api:8080
+      DATABASE_URL: ${TASKNOTES_DATABASE_URL:?Use a role restricted to plugin A schema}
+      PACA_API_KEY_FILE: /run/secrets/paca_api_key
+      WORKER_SECRET_FILE: /run/secrets/worker_secret
+    volumes:
+      - ${PACA_DEPLOY_ROOT:?}/secrets/tasknotes-api-key:/run/secrets/paca_api_key:ro
+      - ${PACA_DEPLOY_ROOT:?}/secrets/tasknotes-worker-secret:/run/secrets/worker_secret:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+  pushgo-worker:
+    profiles: [pushgo]
+    image: ${PUSHGO_WORKER_IMAGE:?Use the matching release image digest}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      PACA_API_URL: http://api:8080
+      DATABASE_URL: ${PUSHGO_DATABASE_URL:?Use a role restricted to plugin B schema}
+      PACA_API_KEY_FILE: /run/secrets/paca_api_key
+      WORKER_SECRET_FILE: /run/secrets/worker_secret
+      GATEWAY_TOKEN_FILE: /run/secrets/gateway_token
+      ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+      PUBLIC_URL: ${PUBLIC_URL:?}
+    volumes:
+      - ${PACA_DEPLOY_ROOT:?}/secrets/pushgo-api-key:/run/secrets/paca_api_key:ro
+      - ${PACA_DEPLOY_ROOT:?}/secrets/pushgo-worker-secret:/run/secrets/worker_secret:ro
+      - ${PACA_DEPLOY_ROOT:?}/secrets/gateway-token:/run/secrets/gateway_token:ro
+      - ${PACA_DEPLOY_ROOT:?}/secrets/encryption-key:/run/secrets/encryption_key:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M

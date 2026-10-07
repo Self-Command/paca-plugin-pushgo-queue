@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/Paca-AI/paca",
+  "version": "v0.18.6",
+  "source_sha": "6791ae2c8cc1a893b0c6799cf7d24df303e8e0b0",
+  "files": {
+    "official/docker-compose.yaml": "d60d5b9d8953423a79fe38afb945890dd02b87736f2ff0447a26f42f98b3dce3",
+    "official/caddy/Caddyfile": "5ef60d95f34f986d360b521fb3acc1b37cec85008c0e9e1af07dcc106109e281"
+  }
+}

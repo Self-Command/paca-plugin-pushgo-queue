@@ -67,15 +67,31 @@ exec((ROOT/'scripts/queue-integration.py').read_text(),globals())
 exec((ROOT/'scripts/pair-integration.py').read_text(),globals())
 verification=ROOT/'verification'
 verification.mkdir(parents=True,exist_ok=True)
-(ROOT/'ci.Caddyfile').write_text(':80 {\n handle /api/* {\n  reverse_proxy paca-ci-api:8080\n }\n handle_path /plugins/* {\n  root * /var/www/plugins\n  file_server\n }\n handle {\n  reverse_proxy paca-ci-web:3000\n }\n}\n')
+(ROOT/'ci.Caddyfile').write_text(':80 {\n handle /api/* {\n  reverse_proxy paca-ci-api:8080\n }\n handle_path /plugins/* {\n  root * /var/www/plugins\n  file_server\n }\n handle_path /plugins-mcp/* {\n  root * /var/www/plugins-mcp\n  file_server\n }\n handle {\n  reverse_proxy paca-ci-web:3000\n }\n}\n')
 cmd('docker','run','-d','--name','paca-ci-web','--network','paca-ci','pacaai/paca-web:0.18.6')
-cmd('docker','run','-d','--name','paca-ci-caddy','--network','paca-ci','-p','127.0.0.1:18081:80','-v',f'{ROOT}/ci.Caddyfile:/etc/caddy/Caddyfile:ro','-v',f'{ROOT}/release/frontend:/var/www/plugins:ro','caddy:2-alpine')
+cmd('docker','run','-d','--name','paca-ci-caddy','--network','paca-ci','-p','127.0.0.1:18081:80','-v',f'{ROOT}/ci.Caddyfile:/etc/caddy/Caddyfile:ro','-v',f'{ROOT}/release/frontend:/var/www/plugins:ro','-v',f'{ROOT}/release/mcp:/var/www/plugins-mcp:ro','caddy:2-alpine')
 for _ in range(40):
     try:
         with urllib.request.urlopen('http://127.0.0.1:18081/api/healthz',timeout=2) as ready:
             if ready.status==200: break
     except OSError: time.sleep(0.5)
 else: raise RuntimeError('Caddy did not become ready')
+
+outsider_password=secrets.token_urlsafe(24)
+outsider_new_password=secrets.token_urlsafe(24)
+request('POST','/admin/users',{'username':'ci-outsider','password':outsider_password,'full_name':'CI permission outsider'},201)
+outsider_opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+def outsider(method,path,data):
+    with outsider_opener.open(urllib.request.Request(base+path,data=json.dumps(data).encode(),method=method,headers={'Content-Type':'application/json'})) as r:
+        body=r.read()
+        return json.loads(body) if body else {}
+outsider('POST','/auth/login',{'username':'ci-outsider','password':outsider_password})
+outsider('PATCH','/users/me/password',{'current_password':outsider_password,'new_password':outsider_new_password})
+outsider('POST','/auth/login',{'username':'ci-outsider','password':outsider_new_password})
+outsider_key=outsider('POST','/users/me/api-keys',{'name':'MCP outsider'})['data']['key']
+(secret_dir/'mcp-context.json').write_text(json.dumps({'base_url':'http://127.0.0.1:18080','gateway_url':'http://127.0.0.1:18081','api_key':api_key,'outsider_key':outsider_key,'project_id':project['id'],'task_id':native['id']}))
+(secret_dir/'mcp-context.json').chmod(0o600)
+cmd('bun','scripts/mcp-smoke.ts')
 from playwright.sync_api import sync_playwright
 with sync_playwright() as pw:
     browser=pw.chromium.launch()
@@ -87,6 +103,11 @@ with sync_playwright() as pw:
     page.get_by_role('button',name=manifest['displayName'],exact=True).last.click(timeout=45000)
     page.get_by_role('status').filter(has_text='已连接宿主').wait_for(timeout=30000)
     page.screenshot(path=str(verification/'plugin-settings.png'),full_page=True)
+    page.goto(f'http://127.0.0.1:18081/projects/{project["id"]}/tasks/{native["id"]}',wait_until='domcontentloaded')
+    page.get_by_role('button',name='保存精确提醒',exact=True).wait_for(timeout=30000)
+    page.get_by_label('精确开始时间',exact=True).fill(instant(86400))
+    page.get_by_role('button',name='保存精确提醒',exact=True).click()
+    page.screenshot(path=str(verification/'task-reminder.png'),full_page=True)
     browser.close()
 report={'official_paca':'0.18.6','plugin':plugin_id,'migration':True,'wasm':True,'worker_hmac':True,'nonce_replay_rejected':True,'frontend_host':True,'task_crud':True,'disable_enable':True,'restart':True}
 (verification/'host-report.json').write_text(json.dumps(report,indent=2))
