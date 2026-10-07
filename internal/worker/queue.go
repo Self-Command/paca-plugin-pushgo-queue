@@ -137,12 +137,15 @@ func (w *Worker) reconcile(ctx context.Context, project string) error {
 	}
 	// Only a complete listing can cancel missing tasks.
 	seen := []string{}
-	for _, task := range tasks {
-		if err = w.syncTask(ctx, s, task, done[task.StatusID]); err != nil {
-			return err
-		}
-		seen = append(seen, task.ID)
-	}
+    taskError := ""
+    for _, task := range tasks {
+        // A blocked task must not starve unrelated reminders. Dispatch still checks
+        // that individual task and C again before any external submission.
+        if err = w.syncTask(ctx, s, task, done[task.StatusID]); err != nil {
+            if taskError == "" { taskError = safeError(err) }
+        }
+        seen = append(seen, task.ID)
+    }
 	tx, err := w.DB.Begin(ctx)
 	if err != nil {
 		return err
@@ -154,7 +157,7 @@ func (w *Worker) reconcile(ctx context.Context, project string) error {
 	if _, err = tx.Exec(ctx, "UPDATE plans SET state='cancelled',updated_at=NOW() WHERE project_id=$1 AND NOT(task_id::text=ANY($2::text[]))", project, seen); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, "UPDATE project_settings SET last_reconciled=NOW(),needs_reconcile=FALSE,last_error='' WHERE project_id=$1 AND revision=$2", project, s.Revision); err != nil {
+	if _, err = tx.Exec(ctx, "UPDATE project_settings SET last_reconciled=NOW(),needs_reconcile=FALSE,last_error=$3 WHERE project_id=$1 AND revision=$2", project, s.Revision, taskError); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
