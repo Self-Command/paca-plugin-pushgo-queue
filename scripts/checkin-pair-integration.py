@@ -34,7 +34,15 @@ request('PATCH',f'/projects/{project["id"]}/tasks/{t["id"]}',{'tags':['学习'],
 request('PUT',cp+f'/tasks/{t["id"]}/checkin',{'revision':0,'config':{'enabled':True,'start':instant(180),'due':instant(240)}})
 # Verify C eligibility before waiting on the durable B worker.
 probe_req=urllib.request.Request('http://127.0.0.1:19092/internal/v1/task',data=json.dumps({'project_id':project['id'],'task_id':t['id']}).encode(),method='POST',headers={'Content-Type':'application/json','Authorization':'Bearer '+action_secret})
-with urllib.request.urlopen(probe_req,timeout=20) as response:assert json.load(response)['enabled']
+for probe_attempt in range(12):
+    try:
+        with urllib.request.urlopen(probe_req,timeout=20) as response:assert json.load(response)['enabled']
+        break
+    except urllib.error.HTTPError as error:
+        print('C initial task response:',error.code,error.read().decode()[:500])
+        if error.code != 503 or probe_attempt == 11:raise
+        time.sleep(1)
+
 before=len(accepted);lost_response=False
 try:wait_state(t['id'],'gateway_accepted')
 except Exception:
