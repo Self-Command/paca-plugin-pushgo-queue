@@ -65,7 +65,7 @@ plugin routes with the same key. It never substitutes the worker's identity. Unk
 
 ## Limits and recovery
 
-No recurring schedule expansion, check-in, statistics or photos in this release.
+Recurring schedule expansion and statistics are not supported. Check-in rules, private photos and Obsidian sync belong to independent plugins; this plugin provides their optional reminder action.
 Generic integration metadata uses `_integration_state_v1` with `start_precision`, `due_precision`,
 `start_instant` / `due_instant`, matching `start_core_date` / `due_core_date` and `timezone`, `archived` and `recurring` values; this is a public task field,
 not a dependency on the TaskNotes plugin's private schema.
@@ -75,7 +75,7 @@ submission. Manual retry preserves `op_id`, requires the current plan and cannot
 Gateway credentials and idempotency records must be retained for the full retry window.
 
 There is a final cross-system race between checking Paca and submitting to Gateway. A reminder already accepted
-or in flight cannot be promised withdrawn. Its link opens the current official task details.
+or in flight cannot be promised withdrawn. The ordinary task link opens the official task details. An optional check-in action opens its restricted page; cancelled or replaced instances reject old actions.
 
 ## Verification
 
