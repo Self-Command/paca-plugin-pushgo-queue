@@ -1,10 +1,15 @@
 """Pin a verified independent TaskNotes release for combined acceptance."""
-import hashlib, io, json, pathlib, tarfile, urllib.request
+import hashlib, io, json, pathlib, tarfile, urllib.request,urllib.error,time
 
 root=pathlib.Path(__file__).resolve().parent.parent
 release='https://github.com/Self-Command/paca-plugin-tasknotes-webhook/releases/download/v0.1.0-dev.24/'
 def get(name):
-    with urllib.request.urlopen(release+name,timeout=60) as r: return r.read()
+    for attempt in range(36):
+        try:
+            with urllib.request.urlopen(release+name,timeout=60) as r: return r.read()
+        except urllib.error.HTTPError as error:
+            if error.code not in (404,429,502,503,504) or attempt==35: raise
+            time.sleep(10)
 checksums=get('checksums.txt').decode()
 package=get('plugin-install.tar.gz')
 expected=next(line.split()[0] for line in checksums.splitlines() if line.endswith('plugin-install.tar.gz'))

@@ -19,7 +19,7 @@ func TestPrecisionMustMatchCurrentCoreDate(t *testing.T) {
 	if len(specs) != 1 || !specs[0].Fire.Equal(at.Add(-10*time.Minute)) {
 		t.Fatal("proven instant not scheduled")
 	}
-	newer := day.Add(24*time.Hour)
+	newer := day.Add(24 * time.Hour)
 	task.Start = &newer
 	specs, _ = Compute(task, c, nil, false)
 	if len(specs) != 0 {

@@ -1,3 +1,6 @@
 Copyright 2026 Self-Command
 Plugin packaging and SDK integration based on Apache-2.0 Paca-AI/paca-plugin-webhook v0.2.0.
 Original copyright notices are preserved in LICENSE and this NOTICE.
+The unmodified deployment files in deploy/official are from Apache-2.0
+Paca-AI/paca v0.18.6, commit 6791ae2c8cc1a893b0c6799cf7d24df303e8e0b0.
+Their original license is preserved in deploy/official/LICENSE.
