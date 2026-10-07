@@ -74,6 +74,8 @@ request('PATCH',f'/projects/{project["id"]}/tasks/{native["id"]}',{'start_date':
 time.sleep(3)
 assert not any(j['task_id']==native['id'] for j in queue())
 
+secondary_log=open(verification/'queue-secondary-worker.log','w')
+secondary_worker=subprocess.Popen(['/tmp/pushgo-worker'],env=worker_env,stdout=secondary_log,stderr=secondary_log)
 four=[]
 for importance,severity in [(10,'low'),(35,'normal'),(75,'high'),(150,'critical')]:
     t=core_task('Four-level '+severity,importance)
@@ -82,7 +84,10 @@ for importance,severity in [(10,'low'),(35,'normal'),(75,'high'),(150,'critical'
 for t,severity in four:
     wait_state(t['id'],'gateway_accepted')
 assert {b['severity'] for b in accepted.values()}=={'low','normal','high','critical'}
-assert len(accepted)==4 and len(submissions)>4,'response-loss test must retry same operation'
+assert secondary_worker.poll() is None,'Concurrent worker did not remain running'
+assert len(accepted)==4 and len(submissions)==5,'Only the lost acknowledgement should require resubmission'
+secondary_worker.terminate();secondary_worker.wait(timeout=10)
+secondary_log.close()
 
 # Rescheduling cancels the old future job, restart preserves its replacement.
 changed=core_task('Reschedule then cancel')
@@ -146,4 +151,4 @@ wait_state(paused['id'],'gateway_accepted')
 assert len(accepted)==5
 worker_process.terminate();worker_process.wait(timeout=10)
 log.close();server.shutdown()
-(verification/'queue-report.json').write_text(json.dumps({'delete_cancels':True,'archive_cancels':True,'recurrence_not_expanded':True,'cleared_date_invalidates_confirmation':True,'native_date_requires_confirmation':True,'four_levels':True,'absolute_ttl':True,'same_op_id_after_lost_response':True,'reschedule_supersedes':True,'restart_no_duplicate':True,'complete_cancels':True,'expired_no_delivery':True,'project_disable_enable_recovers':True,'host_disable_pauses_gateway':True},indent=2))
+(verification/'queue-report.json').write_text(json.dumps({'concurrent_workers_no_extra_submissions':True,'delete_cancels':True,'archive_cancels':True,'recurrence_not_expanded':True,'cleared_date_invalidates_confirmation':True,'native_date_requires_confirmation':True,'four_levels':True,'absolute_ttl':True,'same_op_id_after_lost_response':True,'reschedule_supersedes':True,'restart_no_duplicate':True,'complete_cancels':True,'expired_no_delivery':True,'project_disable_enable_recovers':True,'host_disable_pauses_gateway':True},indent=2))
