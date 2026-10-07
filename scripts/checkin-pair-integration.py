@@ -46,6 +46,7 @@ for probe_attempt in range(12):
 before=len(accepted);lost_response=False
 try:wait_state(t['id'],'gateway_accepted')
 except Exception:
+    (verification/'checkin-pair-host.log').write_text(subprocess.check_output(['docker','logs','paca-ci-api','--tail','120'],stderr=subprocess.STDOUT).decode())
     probe={ 'b_health':request('GET',f'/plugins/{plugin_id}/health'),'c_health':request('GET',f'/plugins/{cid}/health'),'settings':request('GET',f'/plugins/{plugin_id}/projects/{project["id"]}/settings'),'jobs':queue() }
     candidates=request('GET',f'/projects/{project["id"]}/tasks?page_size=200')['data']['items']
     probe['task_plans']=[]
