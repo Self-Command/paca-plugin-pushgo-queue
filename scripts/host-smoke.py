@@ -125,6 +125,8 @@ with sync_playwright() as pw:
     page.goto(f'http://127.0.0.1:18081/projects/{project["id"]}/tasks/{native["id"]}',wait_until='domcontentloaded')
     page.get_by_role('button',name='保存精确提醒',exact=True).wait_for(timeout=30000)
     page.get_by_label('精确开始时间',exact=True).fill(instant(86400))
+    page.get_by_role('button',name='保存精确提醒',exact=True).evaluate("el => el.scrollIntoView({block:'center',inline:'nearest'})")
+    page.screenshot(path=str(verification/'task-reminder-before-save.png'),full_page=True)
     with page.expect_response(lambda r:r.request.method=='PUT' and r.url.endswith('/reminders')) as saved_response:
         page.get_by_role('button',name='保存精确提醒',exact=True).click()
     assert saved_response.value.status==202,'Reminder UI save failed'

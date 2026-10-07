@@ -22,7 +22,7 @@ export default function TaskReminderSection({projectId,taskId,canEdit=true}:{pro
  }
  useEffect(()=>{load().catch(e=>setError(e.message))},[projectId,taskId]);
  useEffect(()=>{const timer=setInterval(()=>api<{plan:{state:string}|null}>(`${base}/reminders`).then(r=>setStatus(r.plan?.state??"awaiting_precise_time")).catch(()=>{}),5000);return()=>clearInterval(timer)},[projectId,taskId]);
- return <div className="checkin-ui"><Card><CardHeader><CardTitle>PushGo 提醒</CardTitle></CardHeader><CardContent className="grid gap-4"><p role="status" className="text-sm text-muted-foreground">{states[status]??"正在读取提醒…"}</p>{error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
+ return <div className="checkin-ui"><Card className="gap-3 py-4"><CardHeader className="py-0"><CardTitle>PushGo 提醒</CardTitle></CardHeader><CardContent className="grid gap-3 max-h-[50vh] overflow-y-auto"><p role="status" className="text-sm text-muted-foreground">{states[status]??"正在读取提醒…"}</p>{error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
   <p className="text-sm text-muted-foreground">确认准确的开始和截止时间，以便按时提醒。已关联任务可沿用原安排，任务日期变化后需要重新确认。</p>
   <label className="flex gap-2 text-sm"><Switch checked={enabled} onCheckedChange={setEnabled}/>启用该任务提醒</label>
   <label className="block text-sm">时区<Input value={timezone} onChange={e=>setTimezone(e.target.value)}/></label>
