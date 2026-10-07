@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"github.com/Self-Command/paca-plugin-pushgo-queue/internal/model"
 	"strings"
+ "strconv"
 )
 
 type TaskCard struct {
 	Title    string   `json:"title"`
+ Number string `json:"number"`
+ Created any `json:"created"`
 	Content  string   `json:"content"`
 	Start    any      `json:"start"`
 	Due      any      `json:"due"`
@@ -49,6 +52,7 @@ func plainBlocks(value any) string {
 	walk(value)
 	return strings.TrimSpace(strings.Join(lines, ""))
 }
+func taskNumber(value int64)string{if value<1{return "未设置"};return "#"+strconv.FormatInt(value,10)}
 func priorityLabel(value int) string {
 	switch {
 	case value >= 100:
@@ -109,7 +113,7 @@ func (w *Worker) taskCardMetadata(ctx context.Context, t model.Task, cfg model.C
 			break
 		}
 	}
-	card := TaskCard{Title: t.Title, Content: plainBlocks(t.Description), Start: start, Due: due, Priority: priorityLabel(t.Importance), Status: status, Tags: t.Tags, Source: "任务中心", Timezone: cfg.Timezone}
+	card := TaskCard{Number:taskNumber(t.TaskNumber),Created:t.CreatedAt,Title: t.Title, Content: plainBlocks(t.Description), Start: start, Due: due, Priority: priorityLabel(t.Importance), Status: status, Tags: t.Tags, Source: "任务中心", Timezone: cfg.Timezone}
 	if model.Meta(t)["source"] == "tasknotes" {
 		card.Source = "Obsidian 任务"
 	}

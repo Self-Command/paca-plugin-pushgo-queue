@@ -15,6 +15,7 @@ import (
 
 type Task struct {
 	ID          string         `json:"id"`
+	TaskNumber  int64          `json:"task_number"`
 	ProjectID   string         `json:"project_id"`
 	Title       string         `json:"title"`
 	StatusID    string         `json:"status_id"`
