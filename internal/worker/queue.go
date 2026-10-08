@@ -25,8 +25,12 @@ func (w *Worker) Tick(ctx context.Context) error {
 	if err := w.control(ctx); err != nil {
 		return err
 	}
-	if err:=w.applyTaskOperation(ctx);err!=nil{return err}
- if err:=w.refreshTaskTime(ctx);err!=nil{return err}
+	if err := w.applyTaskOperation(ctx); err != nil {
+		return err
+	}
+	if err := w.refreshTaskTime(ctx); err != nil {
+		return err
+	}
 	var project string
 	err := w.DB.QueryRow(ctx, "SELECT project_id::text FROM project_settings WHERE needs_reconcile OR last_reconciled IS NULL OR last_reconciled<NOW()-INTERVAL '60 seconds' ORDER BY last_reconciled NULLS FIRST LIMIT 1").Scan(&project)
 	if err == nil {
@@ -167,18 +171,20 @@ func (w *Worker) reconcile(ctx context.Context, project string) error {
 	return tx.Commit(ctx)
 }
 func (w *Worker) syncTask(ctx context.Context, s settings, t model.Task, done bool) error {
-	if err:=w.cacheTaskTimes(ctx,s.Project,t,nil,"");err!=nil{return err}
+	if err := w.cacheTaskTimes(ctx, s.Project, t, nil, ""); err != nil {
+		return err
+	}
 	rule, err := w.loadRule(ctx, s.Project, t.ID)
 	if err != nil {
 		return err
 	}
- t,rule,err=w.migrateRuleTimes(ctx,s,t,rule)
- if err!=nil {
- _=w.cacheTaskTimes(ctx,s.Project,t,nil,err.Error())
- _,_=w.DB.Exec(ctx,"UPDATE plans SET state='time_conflict',updated_at=clock_timestamp() WHERE project_id=$1 AND task_id=$2",s.Project,t.ID)
- _,_=w.DB.Exec(ctx,"UPDATE jobs SET state='superseded',updated_at=clock_timestamp() WHERE project_id=$1 AND task_id=$2 AND kind<>'created' AND state IN('scheduled','retry_wait','sending')",s.Project,t.ID)
- return err
- }
+	t, rule, err = w.migrateRuleTimes(ctx, s, t, rule)
+	if err != nil {
+		_ = w.cacheTaskTimes(ctx, s.Project, t, nil, err.Error())
+		_, _ = w.DB.Exec(ctx, "UPDATE plans SET state='time_conflict',updated_at=clock_timestamp() WHERE project_id=$1 AND task_id=$2", s.Project, t.ID)
+		_, _ = w.DB.Exec(ctx, "UPDATE jobs SET state='superseded',updated_at=clock_timestamp() WHERE project_id=$1 AND task_id=$2 AND kind<>'created' AND state IN('scheduled','retry_wait','sending')", s.Project, t.ID)
+		return err
+	}
 	specs, state, err := w.specifications(ctx, s, t, rule, done)
 	if err != nil {
 		return err

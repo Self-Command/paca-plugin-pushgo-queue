@@ -142,12 +142,25 @@ func (p *integrationPlugin) setReminders(req *plugin.Request, res *plugin.Respon
 		res.Error(400, "due time cannot precede start time")
 		return
 	}
-	times:=model.TimesOf(input.BaseTask);times.Timezone=input.Timezone
-	if start!=nil {times.Start=model.TimeValue{Precision:"instant",Value:start.Format(time.RFC3339Nano)}}
-	if due!=nil {times.Due=model.TimeValue{Precision:"instant",Value:due.Format(time.RFC3339Nano)}}
-	if input.StartMinutes!=nil {times.StartMinutes=*input.StartMinutes};if input.DueMinutes!=nil {times.DueMinutes=*input.DueMinutes}
-	operation:=model.TaskOperation{OpID:"reminder:"+model.Hash(input),Kind:"update",TaskID:input.BaseTask.ID,BaseVersion:model.TimeVersion(input.BaseTask),Times:&times,Reminders:&model.ReminderFlags{Revision:input.Revision,Enabled:input.Enabled,StartEnabled:input.StartEnabled,DueEnabled:input.DueEnabled}}
-	raw,_:=json.Marshal(operation);copyRequest:=*req;copyRequest.Body=raw;p.submitTaskOperation(&copyRequest,res)
+	times := model.TimesOf(input.BaseTask)
+	times.Timezone = input.Timezone
+	if start != nil {
+		times.Start = model.TimeValue{Precision: "instant", Value: start.Format(time.RFC3339Nano)}
+	}
+	if due != nil {
+		times.Due = model.TimeValue{Precision: "instant", Value: due.Format(time.RFC3339Nano)}
+	}
+	if input.StartMinutes != nil {
+		times.StartMinutes = *input.StartMinutes
+	}
+	if input.DueMinutes != nil {
+		times.DueMinutes = *input.DueMinutes
+	}
+	operation := model.TaskOperation{OpID: "reminder:" + model.Hash(input), Kind: "update", TaskID: input.BaseTask.ID, BaseVersion: model.TimeVersion(input.BaseTask), Times: &times, Reminders: &model.ReminderFlags{Revision: input.Revision, Enabled: input.Enabled, StartEnabled: input.StartEnabled, DueEnabled: input.DueEnabled}}
+	raw, _ := json.Marshal(operation)
+	copyRequest := *req
+	copyRequest.Body = raw
+	p.submitTaskOperation(&copyRequest, res)
 
 }
 func (p *integrationPlugin) jobs(req *plugin.Request, res *plugin.Response) {

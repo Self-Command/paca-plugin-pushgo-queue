@@ -14,7 +14,7 @@ import (
 )
 
 type checkinPlan struct {
-	Frozen       bool `json:"frozen"`
+	Frozen       bool       `json:"frozen"`
 	Enabled      bool       `json:"enabled"`
 	Instance     string     `json:"instance_id"`
 	Revision     int        `json:"revision"`
@@ -80,7 +80,9 @@ func (w *Worker) specifications(ctx context.Context, s settings, t model.Task, r
 			}
 			return nil, "checkin_unavailable", err
 		}
-		if err:=w.cacheTaskTimes(ctx,s.Project,t,&plan.Frozen,"");err!=nil{return nil,"time_unavailable",err}
+		if err := w.cacheTaskTimes(ctx, s.Project, t, &plan.Frozen, ""); err != nil {
+			return nil, "time_unavailable", err
+		}
 		if plan.Enabled {
 			if plan.Instance == "" || plan.Revision < 1 || (plan.State != "active" && plan.State != "frozen") {
 				return nil, "checkin_unavailable", errors.New("打卡安排已变更，请重新确认")
