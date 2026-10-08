@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
- "net/url"
+	"net/url"
 	"strings"
 
 	plugin "github.com/Paca-AI/plugin-sdk-go"
@@ -82,7 +82,11 @@ func (p *integrationPlugin) submitTaskOperation(req *plugin.Request, res *plugin
 }
 
 func (p *integrationPlugin) taskOperation(req *plugin.Request, res *plugin.Response) {
- opID,decodeErr:=url.PathUnescape(req.PathParam("opId"));if decodeErr!=nil{res.Error(400,"操作标识无效。");return}
+	opID, decodeErr := url.PathUnescape(req.PathParam("opId"))
+	if decodeErr != nil {
+		res.Error(400, "操作标识无效。")
+		return
+	}
 	rows, err := p.db.Query("SELECT state,task_id::text,result::text,error FROM task_operations WHERE project_id=$1 AND op_id=$2", req.PathParam("projectId"), opID)
 	if err != nil {
 		res.Error(503, "任务操作暂时无法读取。")
