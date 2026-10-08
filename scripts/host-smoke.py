@@ -48,13 +48,13 @@ request('PATCH',f'/admin/plugins/{installed['id']}',{'enabled':False})
 cmd('docker','cp',str(current_package)+ '/.',f'paca-ci-api:/plugins/wasm/{plugin_id}/')
 request('PATCH',f'/admin/plugins/{installed['id']}',{'manifest':manifest,'version':manifest['version'],'enabled':True})
 health=request('GET',f'/plugins/{plugin_id}/health')
-assert health['schema_version']==5 and health['id']==plugin_id
+assert health['schema_version']==6 and health['id']==plugin_id
 stamp=str(int(time.time()))
 nonce=secrets.token_hex(24)
 signature=hmac.new(worker_secret.encode(),f'GET\n/worker/control\n{stamp}\n{nonce}'.encode(),hashlib.sha256).hexdigest()
 worker_headers={'X-Worker-Timestamp':stamp,'X-Worker-Nonce':nonce,'X-Worker-Signature':signature}
 control=request('GET',f'/plugins/{plugin_id}/worker/control',headers=worker_headers)
-assert control['enabled'] and control['schema_version']==5
+assert control['enabled'] and control['schema_version']==6
 request('GET',f'/plugins/{plugin_id}/worker/control',expected=409,headers=worker_headers)
 request('GET',f'/plugins/{plugin_id}/worker/control',expected=401)
 project=request('POST','/projects',{'name':'Plugin baseline','task_id_prefix':'CI'},201)['data']
@@ -70,6 +70,7 @@ cmd('docker','restart','paca-ci-api')
 time.sleep(5)
 request('GET',f'/plugins/{plugin_id}/health')
 exec((ROOT/'scripts/queue-integration.py').read_text(),globals())
+exec((ROOT/'scripts/task-operations-integration.py').read_text(),globals())
 exec((ROOT/'scripts/pair-integration.py').read_text(),globals())
 exec((ROOT/'scripts/checkin-pair-integration.py').read_text(),globals())
 verification=ROOT/'verification'
@@ -98,6 +99,7 @@ outsider('POST','/auth/login',{'username':'ci-outsider','password':outsider_new_
 outsider_key=outsider('POST','/users/me/api-keys',{'name':'MCP outsider'})['data']['key']
 (secret_dir/'mcp-context.json').write_text(json.dumps({'base_url':'http://127.0.0.1:18080','gateway_url':'http://127.0.0.1:18081','api_key':api_key,'outsider_key':outsider_key,'project_id':project['id'],'task_id':native['id']}))
 (secret_dir/'mcp-context.json').chmod(0o600)
+worker_process=subprocess.Popen(['/tmp/pushgo-worker'],env=worker_env,stdout=open(verification/'ui-worker.log','w'),stderr=subprocess.STDOUT)
 cmd('bun','scripts/mcp-smoke.ts')
 reader_role=request('POST',f'/projects/{project["id"]}/roles',{'role_name':'CI core-only reader','permissions':{'tasks.read':True}},201)['data']
 request('POST',f'/projects/{project["id"]}/members',{'user_id':outsider_user['id'],'project_role_id':reader_role['id']},201)
@@ -124,20 +126,32 @@ with sync_playwright() as pw:
     assert not page.get_by_text('op_id',exact=True).count()
     page.screenshot(path=str(verification/'plugin-settings.png'),full_page=True)
     page.goto(f'http://127.0.0.1:18081/projects/{project["id"]}/tasks/{native["id"]}',wait_until='domcontentloaded')
-    page.get_by_role('button',name='保存精确提醒',exact=True).wait_for(timeout=30000)
-    page.get_by_label('开始提醒时间',exact=True).fill(instant(86400)[:16])
-    page.get_by_role('button',name='保存精确提醒',exact=True).evaluate("el => el.scrollIntoView({block:'center',inline:'nearest'})")
-    page.screenshot(path=str(verification/'task-reminder-before-save.png'),full_page=True)
-    with page.expect_response(lambda r:r.request.method=='PUT' and r.url.endswith('/reminders')) as saved_response:
-        page.get_by_role('button',name='保存精确提醒',exact=True).click()
-    assert saved_response.value.status==202,'Reminder UI save failed'
-    page.get_by_role('status').filter(has_text='等待队列更新').wait_for(timeout=10000)
-    assert request('GET',f'/plugins/{plugin_id}/projects/{project["id"]}/tasks/{native["id"]}/reminders')['rule']['timezone']=='Asia/Shanghai'
+    page.get_by_role('button',name='保存时间与提醒',exact=True).wait_for(timeout=30000)
+    page.get_by_role('button',name='刷新安排',exact=True).click()
+    page.get_by_role('button',name='保存时间与提醒',exact=True).wait_for(state='visible')
     page.screenshot(path=str(verification/'task-reminder.png'),full_page=True)
+    page.goto(f'http://127.0.0.1:18081/projects/{project["id"]}/plugins/{plugin_id}/timed-task',wait_until='domcontentloaded')
+    page.get_by_label('任务标题',exact=True).fill('浏览器精确时间创建')
+    page.get_by_label('任务内容',exact=True).fill('完整任务内容')
+    page.get_by_role('combobox').nth(2).click()
+    page.get_by_role('option',name='具体时间',exact=True).click()
+    page.get_by_label('开始日期与时间',exact=True).fill('2026-12-20T09:00')
+    page.get_by_role('button',name='创建任务',exact=True).click()
+    page.wait_for_url(f'**/projects/{project["id"]}/tasks/*',timeout=60000)
+    new_id=page.url.rstrip('/').split('/')[-1]
+    new_task=request('GET',f'/projects/{project["id"]}/tasks/{new_id}')['data']
+    assert new_task['title']=='浏览器精确时间创建'
+    assert new_task['custom_fields']['_integration_state_v1']['start_instant']=='2026-12-20T01:00:00Z'
+    page.set_viewport_size({'width':390,'height':844})
+    page.goto(f'http://127.0.0.1:18081/projects/{project["id"]}/plugins/{plugin_id}/timed-task',wait_until='domcontentloaded')
+    page.get_by_label('任务标题',exact=True).wait_for(timeout=30000)
+    assert page.evaluate('document.documentElement.scrollWidth<=window.innerWidth+2')
+    page.screenshot(path=str(verification/'timed-task-mobile.png'),full_page=True)
     browser.close()
+worker_process.terminate();worker_process.wait(timeout=10)
 retained_jobs={j['id']:(j['op_id'],j['state']) for j in queue()}
 request('PATCH',f'/admin/plugins/{installed["id"]}',{'manifest':manifest,'version':manifest['version'],'enabled':True})
-assert request('GET',f'/plugins/{plugin_id}/health')['schema_version']==5
+assert request('GET',f'/plugins/{plugin_id}/health')['schema_version']==6
 assert {j['id']:(j['op_id'],j['state']) for j in queue()}==retained_jobs,'Manifest reload changed queue history'
 request('DELETE',f'/admin/plugins/{installed["id"]}',expected=204)
 request('GET',f'/plugins/{plugin_id}/health',expected=404)

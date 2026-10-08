@@ -142,23 +142,13 @@ func (p *integrationPlugin) setReminders(req *plugin.Request, res *plugin.Respon
 		res.Error(400, "due time cannot precede start time")
 		return
 	}
-	rule := model.Rule{Enabled: input.Enabled, Timezone: input.Timezone, StartEnabled: input.StartEnabled, DueEnabled: input.DueEnabled, Start: start, Due: due, StartMinutes: input.StartMinutes, DueMinutes: input.DueMinutes, BaseFingerprint: model.Fingerprint(input.BaseTask)}
-	cfg, _ := json.Marshal(rule)
-	n, err := p.db.Exec("INSERT INTO task_rules(project_id,task_id,config) SELECT $1,$2,$3::jsonb WHERE $4=0 ON CONFLICT(project_id,task_id) DO NOTHING", req.PathParam("projectId"), req.PathParam("taskId"), string(cfg), input.Revision)
-	if input.Revision > 0 {
-		n, err = p.db.Exec("UPDATE task_rules SET config=$1::jsonb,revision=revision+1,updated_at=NOW() WHERE project_id=$2 AND task_id=$3 AND revision=$4", string(cfg), req.PathParam("projectId"), req.PathParam("taskId"), input.Revision)
-	}
-	if err != nil {
-		res.Error(503, "rule persistence failed; configure project channel first")
-		return
-	}
-	if n != 1 {
-		res.Error(409, "rule changed; reload before saving")
-		return
-	}
-	_, _ = p.db.Exec("UPDATE project_settings SET needs_reconcile=TRUE WHERE project_id=$1", req.PathParam("projectId"))
-	p.audit(req, "reminder.configured", req.PathParam("taskId"))
-	res.JSON(202, map[string]any{"revision": input.Revision + 1, "state": "awaiting_reconciliation"})
+	times:=model.TimesOf(input.BaseTask);times.Timezone=input.Timezone
+	if start!=nil {times.Start=model.TimeValue{Precision:"instant",Value:start.Format(time.RFC3339Nano)}}
+	if due!=nil {times.Due=model.TimeValue{Precision:"instant",Value:due.Format(time.RFC3339Nano)}}
+	if input.StartMinutes!=nil {times.StartMinutes=*input.StartMinutes};if input.DueMinutes!=nil {times.DueMinutes=*input.DueMinutes}
+	operation:=model.TaskOperation{OpID:"reminder:"+model.Hash(input),Kind:"update",TaskID:input.BaseTask.ID,BaseVersion:model.TimeVersion(input.BaseTask),Times:&times,Reminders:&model.ReminderFlags{Revision:input.Revision,Enabled:input.Enabled,StartEnabled:input.StartEnabled,DueEnabled:input.DueEnabled}}
+	raw,_:=json.Marshal(operation);copyRequest:=*req;copyRequest.Body=raw;p.submitTaskOperation(&copyRequest,res)
+
 }
 func (p *integrationPlugin) jobs(req *plugin.Request, res *plugin.Response) {
 	taskID := req.PathParam("taskId")

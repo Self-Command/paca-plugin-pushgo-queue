@@ -175,11 +175,14 @@ func ParseTime(s, zone string) (*time.Time, error) {
 }
 func Compute(t Task, c Config, r *Rule, done bool) ([]Spec, string) {
 	m := Meta(t)
+ if zone,ok:=m["timezone"].(string);ok&&zone!=""{c.Timezone=zone}
 	if !c.Enabled || done || m["archived"] == true || (r != nil && !r.Enabled) {
 		return []Spec{}, "cancelled"
 	}
 	start, due := precision(t, "start", t.Start), precision(t, "due", t.Due)
 	sm, dm := c.StartMinutes, c.DueMinutes
+	if v,ok:=m["reminder_start_minutes"].(float64);ok {sm=int(v)}
+	if v,ok:=m["reminder_due_minutes"].(float64);ok {dm=int(v)}
 	se, de := true, true
 	stale := false
 	if r != nil {

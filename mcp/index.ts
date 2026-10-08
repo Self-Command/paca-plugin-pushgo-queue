@@ -1,33 +1,25 @@
-// Self-contained Paca MCP entry: every call retains the MCP caller's personal API key.
 type Context={pluginId:string;baseURL:string;apiKey:string};
-const properties={project_id:{type:"string",description:"Paca project UUID"},task_id:{type:"string",description:"Paca task UUID"}};
+const project={project_id:{type:"string",description:"项目 UUID"}};const properties={...project,task_id:{type:"string",description:"任务 UUID"}};
+const timeValue={type:"object",additionalProperties:false,properties:{precision:{type:"string",enum:["none","day","instant"]},value:{type:"string",description:"未设置为空；日期 YYYY-MM-DD；具体时间建议 ISO 8601 含偏移"}},required:["precision","value"]};
+const times={type:"object",additionalProperties:false,properties:{start:timeValue,due:timeValue,timezone:{type:"string",default:"Asia/Shanghai"},start_minutes:{type:"integer",minimum:0,maximum:1440,default:10},due_minutes:{type:"integer",minimum:0,maximum:1440,default:10}},required:["start","due","timezone","start_minutes","due_minutes"]};
 const tools=[
- {name:"pushgo_get_reminders",description:"Query precise reminders, confirmation status and revision for a Paca task.",inputSchema:{type:"object",properties,required:["project_id","task_id"]}},
- {name:"pushgo_get_delivery_status",description:"Query reminder jobs. Gateway accepted is not proof of phone delivery.",inputSchema:{type:"object",properties,required:["project_id","task_id"]}},
- {name:"pushgo_set_reminders",description:"Confirm exact start/due reminder times for a task. Supply ISO times with UTC offsets, or local times and IANA timezone. Date-only values are invalid. Does not change the core task dates. Task date changes invalidate this confirmation.",inputSchema:{type:"object",properties:{...properties,start:{type:"string"},due:{type:"string"},timezone:{type:"string",default:"Asia/Shanghai"},start_minutes:{type:"integer",minimum:0,maximum:1440},due_minutes:{type:"integer",minimum:0,maximum:1440},enabled:{type:"boolean",default:true},start_enabled:{type:"boolean",default:true},due_enabled:{type:"boolean",default:true},revision:{type:"integer",minimum:0,description:"Base rule revision from pushgo_get_reminders"}},required:["project_id","task_id","revision"]}},
+ {name:"pushgo_get_reminders",description:"查询任务提醒、统一时间和版本。只有具体时间才能安排定时提醒。",inputSchema:{type:"object",properties,required:["project_id","task_id"]}},
+ {name:"pushgo_get_delivery_status",description:"查询提醒投递；网关接受不等于手机已收到。",inputSchema:{type:"object",properties,required:["project_id","task_id"]}},
+ {name:"pushgo_get_task_operation",description:"查询持久任务操作。创建响应不明时使用原 op_id 查询，禁止生成新 ID 重复创建。",inputSchema:{type:"object",properties:{...project,op_id:{type:"string"}},required:["project_id","op_id"]}},
+ {name:"pushgo_create_task",description:"一次创建任务及精确时间。用户给出时分时使用本工具；必须保留 op_id 用于重试。仅日期不代表已安排精确提醒。完成后返回实际任务 ID。",inputSchema:{type:"object",properties:{...project,op_id:{type:"string",description:"稳定唯一操作 ID，重复请求保持不变"},title:{type:"string"},content:{type:"string"},status_id:{type:"string"},importance:{type:"integer",minimum:0,maximum:200},tags:{type:"array",items:{type:"string"}},times},required:["project_id","op_id","title","times"]}},
+ {name:"pushgo_set_task_times",description:"修改统一任务开始和结束时间，影响 TaskNotes 同步、提醒和打卡。先查询版本；冻结窗口不能改期。",inputSchema:{type:"object",properties:{...properties,op_id:{type:"string"},base_version:{type:"string"},times},required:["project_id","task_id","op_id","base_version","times"]}},
+ {name:"pushgo_set_reminders",description:"兼容提醒工具：时间写入统一任务数据，同时更新提醒开关。先读取任务与提醒版本。只有日期不能报告为精确提醒。",inputSchema:{type:"object",properties:{...properties,start:{type:"string"},due:{type:"string"},timezone:{type:"string",default:"Asia/Shanghai"},start_minutes:{type:"integer",minimum:0,maximum:1440},due_minutes:{type:"integer",minimum:0,maximum:1440},enabled:{type:"boolean",default:true},start_enabled:{type:"boolean",default:true},due_enabled:{type:"boolean",default:true},revision:{type:"integer",minimum:0}},required:["project_id","task_id","revision"]}},
 ];
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-async function call(context:Context,path:string,method="GET",body?:unknown){
- const response=await fetch(`${context.baseURL.replace(/\/$/,"")}/api/v1${path}`,{method,headers:{"X-API-Key":context.apiKey,"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(15000),redirect:"error"});
- if(!response.ok)throw new Error(`Paca rejected this caller's request: HTTP ${response.status}`);return response.json();
-}
-export default {
- tools,
- async handleToolCall(name:string,args:Record<string,unknown>,context:Context){
-  try{
-   if(!uuid.test(String(args.project_id))||!uuid.test(String(args.task_id)))throw new Error("Valid project and task UUIDs required");
-   const core=`/projects/${args.project_id}/tasks/${args.task_id}`;
-   // Verify caller's task access, even when querying a plugin-owned job.
-   const current=await call(context,core);
-   const plugin=`/plugins/${context.pluginId}${core}`;
-   let value;
-   if(name==="pushgo_get_reminders")value=await call(context,`${plugin}/reminders`);
-   else if(name==="pushgo_get_delivery_status")value=await call(context,`${plugin}/deliveries`);
-   else if(name==="pushgo_set_reminders"){
-    const body={enabled:args.enabled??true,start_enabled:args.start_enabled??true,due_enabled:args.due_enabled??true,timezone:args.timezone??"Asia/Shanghai",start:args.start??"",due:args.due??"",revision:args.revision,base_task:current.data,...(args.start_minutes===undefined?{}:{start_minutes:args.start_minutes}),...(args.due_minutes===undefined?{}:{due_minutes:args.due_minutes})};
-    value=await call(context,`${plugin}/reminders`,"PUT",body);
-   }else throw new Error("Unknown PushGo tool");
-   return {content:[{type:"text",text:JSON.stringify(value)}]};
-  }catch(error){return {isError:true,content:[{type:"text",text:error instanceof Error?error.message:"PushGo request failed"}]}}
- }
-};
+async function call(context:Context,path:string,method="GET",body?:unknown){const response=await fetch(`${context.baseURL.replace(/\/$/,"")}/api/v1${path}`,{method,headers:{"X-API-Key":context.apiKey,"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(15000),redirect:"error"});if(!response.ok)throw new Error(`请求未完成（${response.status}），请核对权限与版本。`);return response.json();}
+async function wait(context:Context,root:string,op:string){for(let n=0;n<20;n++){const result=await call(context,`${root}/task-operations/${encodeURIComponent(op)}`);if(result.state==="applied")return result;if(["failed","conflict","uncertain"].includes(result.state))throw new Error(result.error||"任务结果需核对。");await new Promise(resolve=>setTimeout(resolve,500));}return {op_id:op,state:"pending",message:"任务仍在处理，请使用原操作标识查询结果。"};}
+export default {tools,async handleToolCall(name:string,args:Record<string,unknown>,context:Context){try{
+ if(!uuid.test(String(args.project_id)))throw new Error("项目标识无效。");const root=`/plugins/${context.pluginId}/projects/${args.project_id}`;let value;
+ if(name==="pushgo_create_task"){const {project_id,...body}=args;value=await call(context,`${root}/task-operations`,"POST",{...body,kind:"create"});value=await wait(context,root,value.op_id)}
+ else if(name==="pushgo_get_task_operation")value=await call(context,`${root}/task-operations/${encodeURIComponent(String(args.op_id))}`);
+ else{if(!uuid.test(String(args.task_id)))throw new Error("任务标识无效。");const core=`/projects/${args.project_id}/tasks/${args.task_id}`;const current=await call(context,core);const plugin=`/plugins/${context.pluginId}${core}`;
+ if(name==="pushgo_get_reminders")value={...await call(context,`${plugin}/reminders`),task_times:await call(context,`${plugin}/times`)};
+ else if(name==="pushgo_get_delivery_status")value=await call(context,`${plugin}/deliveries`);
+ else if(name==="pushgo_set_task_times"){value=await call(context,`${root}/task-operations`,"POST",{op_id:args.op_id,kind:"update",task_id:args.task_id,base_version:args.base_version,times:args.times});value=await wait(context,root,value.op_id)}
+ else if(name==="pushgo_set_reminders"){value=await call(context,`${plugin}/reminders`,"PUT",{enabled:args.enabled??true,start_enabled:args.start_enabled??true,due_enabled:args.due_enabled??true,timezone:args.timezone??"Asia/Shanghai",start:args.start??"",due:args.due??"",revision:args.revision,base_task:current.data,...(args.start_minutes===undefined?{}:{start_minutes:args.start_minutes}),...(args.due_minutes===undefined?{}:{due_minutes:args.due_minutes})});value=await wait(context,root,value.op_id)}else throw new Error("未找到此任务工具。");}
+ return {content:[{type:"text",text:JSON.stringify(value)}]};}catch(error){return {isError:true,content:[{type:"text",text:error instanceof Error?error.message:"请求暂时未完成。"}]}}}};

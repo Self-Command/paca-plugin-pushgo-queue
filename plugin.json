@@ -194,6 +194,7 @@
             "name": "requirePermissions",
             "scope": "project",
             "permissions": [
+              "tasks.write",
               "pushgo_queue.manage"
             ]
           }
@@ -217,6 +218,86 @@
             ]
           }
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/projects/:projectId/task-authorization",
+        "middlewares": [
+          {
+            "name": "optionalAuthn"
+          },
+          {
+            "name": "requireFreshPassword"
+          },
+          {
+            "name": "requirePermissions",
+            "scope": "project",
+            "permissions": [
+              "tasks.write",
+              "pushgo_queue.manage"
+            ]
+          }
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/projects/:projectId/task-operations",
+        "middlewares": [
+          {
+            "name": "optionalAuthn"
+          },
+          {
+            "name": "requireFreshPassword"
+          },
+          {
+            "name": "requirePermissions",
+            "scope": "project",
+            "permissions": [
+              "tasks.write",
+              "pushgo_queue.manage"
+            ]
+          }
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/projects/:projectId/task-operations/:opId",
+        "middlewares": [
+          {
+            "name": "optionalAuthn"
+          },
+          {
+            "name": "requireFreshPassword"
+          },
+          {
+            "name": "requirePermissions",
+            "scope": "project",
+            "permissions": [
+              "tasks.read",
+              "pushgo_queue.read"
+            ]
+          }
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/projects/:projectId/tasks/:taskId/times",
+        "middlewares": [
+          {
+            "name": "optionalAuthn"
+          },
+          {
+            "name": "requireFreshPassword"
+          },
+          {
+            "name": "requirePermissions",
+            "scope": "project",
+            "permissions": [
+              "tasks.read",
+              "pushgo_queue.read"
+            ]
+          }
+        ]
       }
     ],
     "sensitiveFields": {
@@ -225,6 +306,9 @@
       ],
       "project_settings": [
         "password_enc"
+      ],
+      "task_operations": [
+        "auth_enc"
       ]
     }
   },
@@ -241,9 +325,25 @@
       {
         "point": "task.detail.section",
         "component": "TaskReminderSection",
-        "label": "PushGo 提醒",
+        "label": "任务时间与提醒",
         "order": 120,
         "requiredPermission": "pushgo_queue.read"
+      },
+      {
+        "point": "project.page",
+        "component": "TimedTaskPage",
+        "label": "新建定时任务",
+        "requiredPermission": "pushgo_queue.manage"
+      }
+    ],
+    "navItems": [
+      {
+        "scope": "project",
+        "slug": "timed-task",
+        "label": "新建定时任务",
+        "component": "TimedTaskPage",
+        "icon": "calendar-clock",
+        "requiredPermission": "pushgo_queue.manage"
       }
     ]
   },

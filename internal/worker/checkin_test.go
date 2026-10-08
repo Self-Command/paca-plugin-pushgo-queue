@@ -20,7 +20,7 @@ func TestOptionalCheckinIsolatedAndEndDoesNotCancelIndependentStart(t *testing.T
 	internal := 0
 	host := httptest.NewServer(http.HandlerFunc(func(out http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/v1/plugins/"+PluginID+"/worker/control" {
-			json.NewEncoder(out).Encode(map[string]any{"id": PluginID, "version": Version, "source_sha": buildinfo.SourceSHA, "schema_version": 5, "enabled": true})
+			json.NewEncoder(out).Encode(map[string]any{"id": PluginID, "version": Version, "source_sha": buildinfo.SourceSHA, "schema_version": 6, "enabled": true})
 			return
 		}
 		internal++
