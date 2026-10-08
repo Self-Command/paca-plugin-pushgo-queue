@@ -175,7 +175,7 @@ func ParseTime(s, zone string) (*time.Time, error) {
 }
 func Compute(t Task, c Config, r *Rule, done bool) ([]Spec, string) {
 	m := Meta(t)
-	if !c.Enabled || done || m["archived"] == true || m["recurring"] == true || (r != nil && !r.Enabled) {
+	if !c.Enabled || done || m["archived"] == true || (r != nil && !r.Enabled) {
 		return []Spec{}, "cancelled"
 	}
 	start, due := precision(t, "start", t.Start), precision(t, "due", t.Due)
@@ -210,6 +210,7 @@ func Compute(t Task, c Config, r *Rule, done bool) ([]Spec, string) {
 		loc = time.UTC
 	}
 	binding := Hash(c.GatewayURL + "\n" + c.ChannelID)
+	if m["recurring"] == true { se,de=false,false }
 	for _, item := range []struct {
 		kind, label string
 		target      *time.Time
@@ -228,7 +229,7 @@ func Compute(t Task, c Config, r *Rule, done bool) ([]Spec, string) {
 		body := fmt.Sprintf("%s：%s；提前 %d 分钟。", item.label, target.In(loc).Format("2006-01-02 15:04:05 MST"), item.minutes)
 		specs = append(specs, Spec{item.kind, target, fire, expires, item.label + "：" + t.Title, body, Severity(t.Importance, c.PriorityMap), binding})
 	}
-	if c.CreatedPush && !t.CreatedAt.IsZero() {
+	if c.CreatedPush && !t.CreatedAt.IsZero() && !Occurrence(t) {
 		specs = append(specs, Spec{"created", t.CreatedAt, t.CreatedAt, t.CreatedAt.Add(5 * time.Minute), "新任务：" + t.Title, "任务已创建。", Severity(t.Importance, c.PriorityMap), binding})
 	}
 	if stale {
@@ -244,3 +245,15 @@ func OpID(project, task string, s Spec) string {
 }
 
 func Precise(t Task, kind string, value *time.Time) *time.Time { return precision(t, kind, value) }
+
+// Occurrence identities are explicit on the first core create, before events fire.
+func Occurrence(t Task) bool {
+ m:=Meta(t)
+ extra,_:=t.Custom["_task_sync_v1"].(map[string]any)
+ ref,_:=t.Custom["_integration_ref_v1"].(string)
+ return strings.HasPrefix(ref,"period:") || m["occurrence_date"]!=nil && m["occurrence_date"]!="" || extra["occurrence_date"]!=nil && extra["occurrence_date"]!="" || extra["recurrence_parent"]!=nil && extra["recurrence_parent"]!=""
+}
+func CreationKey(t Task) string {
+ if ref,ok:=t.Custom["_integration_ref_v1"].(string);ok&&ref!="" {return "ref:"+ref}
+ return "task:"+t.ID
+}

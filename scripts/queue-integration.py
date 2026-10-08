@@ -190,6 +190,27 @@ assert sum(b['op_id']==crash_job['op_id'] for b in submissions)==2
 sql=f"SELECT generation FROM plugin_data_com_selfcommand_pushgo_queue.jobs WHERE op_id='{crash_job['op_id']}'"
 generation=subprocess.check_output(['docker','exec','paca-ci-db','psql','-U','postgres','-d','paca','-Atc',sql],text=True).strip()
 assert int(generation)>=2,'Expired lease was not reclaimed with a new generation'
+# Regression: one logical mother announcement, no automatic-period storm.
+setting=request('GET',f'/plugins/{plugin_id}/projects/{project["id"]}/settings')
+request('PUT',f'/plugins/{plugin_id}/projects/{project["id"]}/settings',{**cfg,'revision':setting['revision'],'created_push':True,'password':''})
+prior=len(accepted)
+mother=request('POST',f'/projects/{project["id"]}/tasks',{'title':'每日母任务通知一次','custom_fields':{'_integration_state_v1':{'recurring':True}}},201)['data']
+period_ids=[]
+for day in range(31):
+    date=(datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(days=day+1)).date().isoformat()
+    item=request('POST',f'/projects/{project["id"]}/tasks',{'title':'自动周期 '+date,'custom_fields':{'_integration_ref_v1':'period:'+mother['id']+':'+date,'_task_sync_v1':{'recurrence_parent':mother['id'],'occurrence_date':date}}},201)['data']
+    period_ids.append(item['id'])
+wait_state(mother['id'],'gateway_accepted')
+time.sleep(3)
+assert len(accepted)==prior+1,'Automatic periods generated a notification storm'
+assert not any(j['task_id'] in period_ids and j['kind']=='created' for j in queue())
+for _ in range(2):
+    setting=request('GET',f'/plugins/{plugin_id}/projects/{project["id"]}/settings')
+    request('PUT',f'/plugins/{plugin_id}/projects/{project["id"]}/settings',{**cfg,'revision':setting['revision'],'created_push':True,'password':''})
+    request('PATCH',f'/projects/{project["id"]}/tasks/{mother["id"]}',{'title':'母任务改名仍然一次'})
+    time.sleep(2)
+assert len(accepted)==prior+1,'Reconciliation replayed a logical creation'
+(verification/'creation-identity-report.json').write_text(json.dumps({'one_mother_announcement':True,'thirty_one_periods_without_created_alert':True,'setting_and_update_no_replay':True}))
 worker_process.terminate();worker_process.wait(timeout=10)
 log.close();server.shutdown()
 (verification/'queue-report.json').write_text(json.dumps({'http_429_503_same_operation_retry':True,'retry_after_respected':True,'crash_recovers_expired_lease':True,'new_lease_generation':True,'concurrent_workers_no_extra_submissions':True,'delete_cancels':True,'archive_cancels':True,'recurrence_not_expanded':True,'cleared_date_invalidates_confirmation':True,'native_date_requires_confirmation':True,'four_levels':True,'absolute_ttl':True,'same_op_id_after_lost_response':True,'reschedule_supersedes':True,'restart_no_duplicate':True,'complete_cancels':True,'expired_no_delivery':True,'project_disable_enable_recovers':True,'host_disable_pauses_gateway':True},indent=2))

@@ -61,9 +61,14 @@ func (w *Worker) specifications(ctx context.Context, s settings, t model.Task, r
 		specs, state := model.Compute(t, s.Config, rule, done)
 		return specs, state, nil
 	}
+	base,state:=model.Compute(t,s.Config,rule,done)
+	if model.Meta(t)["recurring"]==true {return base,state,nil}
 	var plan checkinPlan
 	if s.Config.CheckinEnabled {
 		if err := w.checkinCall(ctx, "/internal/v1/task", map[string]any{"project_id": s.Project, "task_id": t.ID}, &plan); err != nil {
+			created:=[]model.Spec{}
+			for _,spec:=range base {if spec.Kind=="created" {created=append(created,spec)}}
+			if len(created)>0 {return created,"checkin_unavailable",nil}
 			return nil, "checkin_unavailable", err
 		}
 		if plan.Enabled {

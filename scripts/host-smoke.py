@@ -48,13 +48,13 @@ request('PATCH',f'/admin/plugins/{installed['id']}',{'enabled':False})
 cmd('docker','cp',str(current_package)+ '/.',f'paca-ci-api:/plugins/wasm/{plugin_id}/')
 request('PATCH',f'/admin/plugins/{installed['id']}',{'manifest':manifest,'version':manifest['version'],'enabled':True})
 health=request('GET',f'/plugins/{plugin_id}/health')
-assert health['schema_version']==4 and health['id']==plugin_id
+assert health['schema_version']==5 and health['id']==plugin_id
 stamp=str(int(time.time()))
 nonce=secrets.token_hex(24)
 signature=hmac.new(worker_secret.encode(),f'GET\n/worker/control\n{stamp}\n{nonce}'.encode(),hashlib.sha256).hexdigest()
 worker_headers={'X-Worker-Timestamp':stamp,'X-Worker-Nonce':nonce,'X-Worker-Signature':signature}
 control=request('GET',f'/plugins/{plugin_id}/worker/control',headers=worker_headers)
-assert control['enabled'] and control['schema_version']==4
+assert control['enabled'] and control['schema_version']==5
 request('GET',f'/plugins/{plugin_id}/worker/control',expected=409,headers=worker_headers)
 request('GET',f'/plugins/{plugin_id}/worker/control',expected=401)
 project=request('POST','/projects',{'name':'Plugin baseline','task_id_prefix':'CI'},201)['data']
@@ -137,7 +137,7 @@ with sync_playwright() as pw:
     browser.close()
 retained_jobs={j['id']:(j['op_id'],j['state']) for j in queue()}
 request('PATCH',f'/admin/plugins/{installed["id"]}',{'manifest':manifest,'version':manifest['version'],'enabled':True})
-assert request('GET',f'/plugins/{plugin_id}/health')['schema_version']==4
+assert request('GET',f'/plugins/{plugin_id}/health')['schema_version']==5
 assert {j['id']:(j['op_id'],j['state']) for j in queue()}==retained_jobs,'Manifest reload changed queue history'
 request('DELETE',f'/admin/plugins/{installed["id"]}',expected=204)
 request('GET',f'/plugins/{plugin_id}/health',expected=404)

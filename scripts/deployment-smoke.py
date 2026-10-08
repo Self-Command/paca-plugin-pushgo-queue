@@ -80,6 +80,6 @@ request('GET',f'/projects/{project["id"]}/conversations')
 source_manifest=json.loads((ROOT/'plugin.json').read_text())
 manifest=json.loads((ROOT/f'release/wasm/{source_manifest["id"]}/plugin.json').read_text())
 request('POST','/admin/plugins',{'name':manifest['id'],'version':manifest['version'],'manifest':manifest,'enabled':True})
-assert request('GET',f'/plugins/{manifest["id"]}/health')['schema_version']==4
+assert request('GET',f'/plugins/{manifest["id"]}/health')['schema_version']==5
 (verification/'deployment-report.json').write_text(json.dumps({'unchanged_upstream':upstream['source_sha'],'official_images_pinned':True,'nginx_118_syntax':True,'loopback_only':True,'official_task_crud':True,'original_attachment_upload_download':True,'realtime_websocket_auth':True,'ai_routes_preserved':True,'agent_concurrency':1,'actual_model_chat':'not_executed_requires_model_configuration','plugins_on_full_stack':True},indent=2))
 subprocess.run(compose+['down'],check=True)

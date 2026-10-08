@@ -178,12 +178,14 @@ func (w *Worker) syncTask(ctx context.Context, s settings, t model.Task, done bo
 	if err != nil {
 		return err
 	}
-	fingerprint := model.Hash(map[string]any{"specs": specs, "state": state, "card": metadata})
 	tx, err := w.DB.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
+	specs,err=creationSpecs(ctx,tx,s.Project,t,specs)
+	if err!=nil{return err}
+	fingerprint := model.Hash(map[string]any{"specs": specs, "state": state, "card": metadata})
 	var revision int
 	var oldHash string
 	err = tx.QueryRow(ctx, "SELECT revision,fingerprint FROM plans WHERE project_id=$1 AND task_id=$2 FOR UPDATE", s.Project, t.ID).Scan(&revision, &oldHash)
@@ -212,6 +214,7 @@ func (w *Worker) syncTask(ctx context.Context, s settings, t model.Task, done bo
 			jobState = "expired"
 		}
 		op := model.OpID(s.Project, t.ID, spec)
+		if spec.Kind=="created" {if err=tx.QueryRow(ctx,"SELECT op_id FROM creation_notices WHERE project_id=$1 AND task_id=$2",s.Project,t.ID).Scan(&op);err!=nil{return err}}
 		// Preserve payload/op_id once a submit was attempted; response-loss retries must remain identical.
 		_, err = tx.Exec(ctx, "INSERT INTO jobs(project_id,task_id,kind,target_at,fire_at,expires_at,plan_revision,binding_key,op_id,payload,state,next_attempt) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$5) ON CONFLICT(op_id) DO UPDATE SET plan_revision=EXCLUDED.plan_revision,fire_at=EXCLUDED.fire_at,payload=CASE WHEN jobs.attempts=0 AND NOT jobs.action_ready THEN EXCLUDED.payload ELSE jobs.payload END,state=CASE WHEN jobs.state='gateway_accepted' THEN jobs.state WHEN jobs.expires_at<=NOW() THEN 'expired' ELSE EXCLUDED.state END,next_attempt=GREATEST(EXCLUDED.fire_at,NOW()),lease_owner=NULL,lease_until=NULL,updated_at=NOW()", s.Project, t.ID, spec.Kind, spec.Target, spec.Fire, spec.Expires, revision, spec.Binding, op, string(raw), jobState)
 		if err != nil {
@@ -271,7 +274,7 @@ func (w *Worker) dispatch(ctx context.Context) error {
 		return w.result(ctx, j, "retry_wait", safeError(err), nil, 15*time.Second)
 	}
 	var valid bool
-	err = w.DB.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM jobs j JOIN plans p ON p.project_id=j.project_id AND p.task_id=j.task_id WHERE j.id=$1 AND j.state='sending' AND j.lease_owner=$2 AND j.generation=$3 AND j.plan_revision=p.revision AND p.state IN ('active','confirmation_stale') AND j.expires_at>NOW())", j.ID, j.Owner, j.Generation).Scan(&valid)
+	err = w.DB.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM jobs j JOIN plans p ON p.project_id=j.project_id AND p.task_id=j.task_id WHERE j.id=$1 AND j.state='sending' AND j.lease_owner=$2 AND j.generation=$3 AND j.plan_revision=p.revision AND (p.state IN ('active','confirmation_stale') OR j.kind='created') AND j.expires_at>NOW())", j.ID, j.Owner, j.Generation).Scan(&valid)
 	if err != nil || !valid {
 		return err
 	}
