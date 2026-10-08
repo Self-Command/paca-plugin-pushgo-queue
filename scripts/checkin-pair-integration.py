@@ -71,6 +71,8 @@ for body in bodies:
 # The same canonical operation drives B and C; no per-plugin task time copy.
 import uuid
 frozen_view=task_times(t['id'])
+time.sleep(2)
+frozen_view=task_times(t['id']);assert frozen_view['frozen'] is True,'cache refresh discarded confirmed frozen window'
 frozen_update={'op_id':str(uuid.uuid4()),'kind':'update','task_id':t['id'],'base_version':frozen_view['version'],'times':{**frozen_view['times'],'start':{'precision':'instant','value':instant(3600)},'due':{'precision':'instant','value':instant(7200)}}}
 request('POST',operation_root,frozen_update,202)
 frozen_result=operation_result(frozen_update['op_id'])

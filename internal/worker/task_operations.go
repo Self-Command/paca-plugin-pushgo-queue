@@ -62,7 +62,7 @@ func (w *Worker) cacheTaskTimes(ctx context.Context, project string, t model.Tas
 		return nil
 	}
 	raw, _ := json.Marshal(model.TimesOf(t))
-	_, err := w.DB.Exec(ctx, "INSERT INTO task_time_views(project_id,task_id,version,times,frozen,error) VALUES($1,$2,$3,$4::jsonb,$5,$6) ON CONFLICT(project_id,task_id) DO UPDATE SET version=EXCLUDED.version,times=EXCLUDED.times,frozen=EXCLUDED.frozen,error=EXCLUDED.error,updated_at=clock_timestamp()", project, t.ID, model.TimeVersion(t), string(raw), frozen, message)
+	_, err := w.DB.Exec(ctx, "INSERT INTO task_time_views(project_id,task_id,version,times,frozen,error) VALUES($1,$2,$3,$4::jsonb,$5,$6) ON CONFLICT(project_id,task_id) DO UPDATE SET version=EXCLUDED.version,times=EXCLUDED.times,frozen=COALESCE(EXCLUDED.frozen,task_time_views.frozen),error=EXCLUDED.error,updated_at=clock_timestamp()", project, t.ID, model.TimeVersion(t), string(raw), frozen, message)
 	return err
 }
 
