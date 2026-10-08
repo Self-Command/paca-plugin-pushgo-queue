@@ -1,39 +1,50 @@
-import { useEffect,useState } from "react";
-import {api,request} from "./api";
-import {Card,CardHeader,CardTitle,CardContent} from "./components/ui/card";import {Button} from "./components/ui/button";import {Input} from "./components/ui/input";import {Switch} from "./components/ui/switch";import "./theme.css";
-const states:Record<string,string>={active:"已安排提醒",awaiting_precise_time:"待确认准确时间",awaiting_reconciliation:"等待队列更新",confirmation_stale:"时间确认已失效",cancelled:"已取消提醒"};
+import {useEffect,useState} from "react";
+import {api} from "./api";
+import {Card,CardHeader,CardTitle,CardContent} from "./components/ui/card";
+import {Button} from "./components/ui/button";
+import {Switch} from "./components/ui/switch";
+import TaskTimesForm,{emptyTimes,type TaskTimes} from "./TaskTimesForm";
+import {operationKey,waitOperation} from "./task-operations";
+import "./theme.css";
 
-function inputTime(value:unknown,timezone:string):string {
- const text=String(value??"");if(!text)return "";
- if(!/(Z|[+-]\d\d:\d\d)$/.test(text))return text.slice(0,16);
- const date=new Date(text);if(Number.isNaN(date.getTime()))return "";
- try{return new Intl.DateTimeFormat("sv-SE",{timeZone:timezone,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(date).replace(" ","T")}catch{return ""}
-}
-
-export default function TaskReminderSection({projectId,taskId,canEdit=true}:{projectId:string;taskId:string;canEdit?:boolean}) {
+type TimeView={state:string;version:string;times:TaskTimes;frozen:boolean|null;error?:string};
+const states:Record<string,string>={active:"已安排提醒",awaiting_precise_time:"待确认准确时间",awaiting_reconciliation:"等待安排更新",confirmation_stale:"时间需要重新确认",time_conflict:"时间存在冲突，请核对",cancelled:"已取消提醒",identity_conflict:"任务关联需要核对",checkin_unavailable:"打卡安排暂时不可用"};
+export default function TaskReminderSection({projectId,taskId,canEdit=true}:{projectId:string;taskId:string;canEdit?:boolean}){
  const base=`/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}`;
- const [start,setStart]=useState("");const [due,setDue]=useState("");const [timezone,setTimezone]=useState("Asia/Shanghai");
- const [startMinutes,setStartMinutes]=useState("10");const [dueMinutes,setDueMinutes]=useState("10");
+ const storage=operationKey(projectId)+":"+taskId;
+ const [times,setTimes]=useState(emptyTimes);
+ const [version,setVersion]=useState("");const [frozen,setFrozen]=useState(false);
  const [enabled,setEnabled]=useState(true);const [startEnabled,setStartEnabled]=useState(true);const [dueEnabled,setDueEnabled]=useState(true);
- const [revision,setRevision]=useState(0);const [status,setStatus]=useState("正在读取提醒…");const [error,setError]=useState("");const [busy,setBusy]=useState(false);
+ const [revision,setRevision]=useState(0);const [status,setStatus]=useState("");const [error,setError]=useState("");const [busy,setBusy]=useState(false);
+ const [pending,setPending]=useState(()=>localStorage.getItem(storage)||"");
  async function load(){
-  const [r,p]=await Promise.all([
-   api<{revision:number;rule:Record<string,unknown>|null;plan:{state:string}|null}>(`${base}/reminders`),
-   api<{config:{timezone:string;start_minutes:number;due_minutes:number}}>(`/projects/${encodeURIComponent(projectId)}/settings`),
-  ]);
-  setRevision(r.revision);setStatus(r.plan?.state??"awaiting_precise_time");
-  const zone=String(r.rule?.timezone||p.config.timezone||"Asia/Shanghai");setTimezone(zone);
-  setStartMinutes(String(r.rule?.start_minutes??p.config.start_minutes));
-  setDueMinutes(String(r.rule?.due_minutes??p.config.due_minutes));
-  if(r.rule){setStart(inputTime(r.rule.start,zone));setDue(inputTime(r.rule.due,zone));setEnabled(r.rule.enabled===true);setStartEnabled(r.rule.start_enabled===true);setDueEnabled(r.rule.due_enabled===true)}
+  const rule=await api<{revision:number;rule:{enabled:boolean;start_enabled:boolean;due_enabled:boolean}|null;plan:{state:string}|null}>(`${base}/reminders`);
+  let view:TimeView|undefined;
+  for(let n=0;n<40;n++){view=await api<TimeView>(`${base}/times`);if(view.state==="ready")break;await new Promise(resolve=>setTimeout(resolve,500));}
+  if(!view||view.state!=="ready")throw new Error("任务时间仍在读取，请稍后刷新。");
+  setTimes(view.times);setVersion(view.version);setFrozen(view.frozen===true);setRevision(rule.revision);
+  setEnabled(rule.rule?.enabled??true);setStartEnabled(rule.rule?.start_enabled??true);setDueEnabled(rule.rule?.due_enabled??true);
+  setStatus(rule.plan?.state??"awaiting_precise_time");if(view.error)setError(view.error);
  }
- useEffect(()=>{load().catch(e=>setError(e.message))},[projectId,taskId]);
+ useEffect(()=>{setVersion("");setError("");setPending(localStorage.getItem(storage)||"");load().catch(e=>setError(e.message))},[projectId,taskId]);
  useEffect(()=>{const timer=setInterval(()=>api<{plan:{state:string}|null}>(`${base}/reminders`).then(r=>setStatus(r.plan?.state??"awaiting_precise_time")).catch(()=>{}),5000);return()=>clearInterval(timer)},[projectId,taskId]);
- return <div className="checkin-ui"><Card className="gap-3 py-4"><CardHeader className="py-0"><CardTitle>PushGo 提醒</CardTitle></CardHeader><CardContent className="grid gap-3 max-h-[50vh] overflow-y-auto"><p role="status" className="text-sm text-muted-foreground">{states[status]??"正在读取提醒…"}</p>{error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
-  <p className="text-sm text-muted-foreground">确认准确的开始和截止时间，以便按时提醒。已关联任务可沿用原安排，任务日期变化后需要重新确认。</p>
-  <label className="flex gap-2 text-sm"><Switch checked={enabled} onCheckedChange={setEnabled}/>启用该任务提醒</label>
-  <label className="block text-sm">时区<Input value={timezone} onChange={e=>setTimezone(e.target.value)}/></label>
-  <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-2"><label className="flex gap-2 text-sm"><Switch checked={startEnabled} onCheckedChange={setStartEnabled}/>开始提醒</label><label className="block space-y-2 text-sm">开始提醒时间<Input type="datetime-local" value={start} onChange={e=>setStart(e.target.value)}/></label><label className="text-sm">提前分钟<Input type="number" min="0" max="1440" value={startMinutes} onChange={e=>setStartMinutes(e.target.value)}/></label></div><div className="space-y-2"><label className="flex gap-2 text-sm"><Switch checked={dueEnabled} onCheckedChange={setDueEnabled}/>截止提醒</label><label className="block space-y-2 text-sm">截止提醒时间<Input type="datetime-local" value={due} onChange={e=>setDue(e.target.value)}/></label><label className="text-sm">提前分钟<Input type="number" min="0" max="1440" value={dueMinutes} onChange={e=>setDueMinutes(e.target.value)}/></label></div></div>
-  <Button disabled={busy||!canEdit} onClick={async()=>{setBusy(true);setError("");try{const task=await request<{data:unknown}>(`/api/v1${base}`);await api(`${base}/reminders`,"PUT",{revision,enabled,start_enabled:startEnabled,due_enabled:dueEnabled,start,due,timezone,start_minutes:Number(startMinutes),due_minutes:Number(dueMinutes),base_task:task.data});await load()}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}}}>保存精确提醒</Button>
+ async function save(){
+  setBusy(true);setError("");
+  try{
+   let op=pending;let body:unknown;
+   if(!op){op=crypto.randomUUID();body={op_id:op,kind:"update",task_id:taskId,base_version:version,...(frozen?{}:{times}),reminders:{revision,enabled,start_enabled:startEnabled,due_enabled:dueEnabled}};localStorage.setItem(storage+":body",JSON.stringify(body));localStorage.setItem(storage,op);setPending(op)}
+   else{const saved=localStorage.getItem(storage+":body");if(saved)body=JSON.parse(saved)}
+   if(body)await api(`/projects/${projectId}/task-operations`,"POST",body);
+   await waitOperation(projectId,op);localStorage.removeItem(storage);localStorage.removeItem(storage+":body");setPending("");await load();
+  }catch(e){if(typeof e==="object"&&e!==null&&(("operationState" in e&&["failed","conflict"].includes(String(e.operationState)))||("status" in e&&[400,401,403,409,422].includes(Number(e.status))))){localStorage.removeItem(storage);localStorage.removeItem(storage+":body");setPending("");await load().catch(()=>{})}setError(e instanceof Error?e.message:"任务时间暂时无法保存。")}finally{setBusy(false)}
+ }
+ return <div className="checkin-ui"><Card className="gap-3 py-4"><CardHeader className="py-0"><CardTitle>任务时间与提醒</CardTitle></CardHeader><CardContent className="grid gap-4 max-h-[65vh] overflow-y-auto">
+  <p role="status" className="text-sm text-muted-foreground">{states[status]??"正在读取安排…"}</p>
+  <p className="text-sm text-muted-foreground">任务同步、推送和打卡使用以下时间。仅填写日期不会安排定时提醒。</p>
+  {frozen&&<p className="text-sm text-muted-foreground">打卡窗口已开放，时间已冻结。请取消原实例后再改期。</p>}
+  <TaskTimesForm value={times} onChange={setTimes} disabled={!canEdit||busy||!!pending||!version||frozen}/>
+  <fieldset disabled={!canEdit||busy||!!pending||!version} className="grid gap-3"><label className="flex items-center gap-2 text-sm"><Switch checked={enabled} onCheckedChange={setEnabled}/>启用该任务提醒</label><label className="flex items-center gap-2 text-sm"><Switch checked={startEnabled} onCheckedChange={setStartEnabled}/>开始提醒</label><label className="flex items-center gap-2 text-sm"><Switch checked={dueEnabled} onCheckedChange={setDueEnabled}/>结束提醒</label></fieldset>
+  {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
+  <div className="flex flex-wrap gap-2"><Button disabled={!canEdit||busy||!version} onClick={save}>{busy?"正在保存…":pending?"查询保存结果":"保存时间与提醒"}</Button><Button variant="outline" disabled={busy||!!pending} onClick={()=>{setError("");load().catch(e=>setError(e.message))}}>刷新安排</Button></div>
  </CardContent></Card></div>;
 }

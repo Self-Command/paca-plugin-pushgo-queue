@@ -129,6 +129,11 @@ with sync_playwright() as pw:
     page.get_by_role('button',name='保存时间与提醒',exact=True).wait_for(timeout=30000)
     page.get_by_role('button',name='刷新安排',exact=True).click()
     page.get_by_role('button',name='保存时间与提醒',exact=True).wait_for(state='visible')
+    page.get_by_label('开始日期与时间',exact=True).fill('2026-12-18T08:30')
+    page.get_by_role('button',name='保存时间与提醒',exact=True).click()
+    page.get_by_role('button',name='保存时间与提醒',exact=True).wait_for(timeout=45000)
+    native_after=request('GET',f'/projects/{project["id"]}/tasks/{native["id"]}')['data']
+    assert native_after['custom_fields']['_integration_state_v1']['start_instant']=='2026-12-18T00:30:00Z'
     page.screenshot(path=str(verification/'task-reminder.png'),full_page=True)
     page.goto(f'http://127.0.0.1:18081/projects/{project["id"]}/plugins/{plugin_id}/timed-task',wait_until='domcontentloaded')
     page.get_by_label('任务标题',exact=True).fill('浏览器精确时间创建')

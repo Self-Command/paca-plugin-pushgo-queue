@@ -68,10 +68,36 @@ for body in bodies:
     assert metadata['action_url'].startswith('https://task.example.org/checkin/') and '#token=' in metadata['action_url']
     card=json.loads(metadata['task_card']);assert card['content']=='阅读第五章，整理三个要点。' and card['priority']=='高' and card['tags']==['学习']
 # Gateway handler already checks that all response-loss retries preserve the full snapshot.
+# The same canonical operation drives B and C; no per-plugin task time copy.
+import uuid
+frozen_view=task_times(t['id'])
+frozen_update={'op_id':str(uuid.uuid4()),'kind':'update','task_id':t['id'],'base_version':frozen_view['version'],'times':{**frozen_view['times'],'start':{'precision':'instant','value':instant(3600)},'due':{'precision':'instant','value':instant(7200)}}}
+request('POST',operation_root,frozen_update,202)
+frozen_result=operation_result(frozen_update['op_id'])
+assert frozen_result['state']=='conflict' and frozen_result['result']['status_code']==409,frozen_result
+canonical={'op_id':str(uuid.uuid4()),'kind':'create','title':'统一时间与打卡联调','times':{'start':{'precision':'instant','value':instant(3600)},'due':{'precision':'instant','value':instant(7200)},'timezone':'Asia/Shanghai','start_minutes':10,'due_minutes':10}}
+request('POST',operation_root,canonical,202);canonical_result=operation_result(canonical['op_id']);assert canonical_result['state']=='applied',canonical_result
+canonical_id=canonical_result['task_id'];old_jobs=wait_state(canonical_id,'scheduled');old_ops={j['op_id'] for j in old_jobs if j['state']=='scheduled'}
+def canonical_plan():
+    req=urllib.request.Request('http://127.0.0.1:19092/internal/v1/task',data=json.dumps({'project_id':project['id'],'task_id':canonical_id}).encode(),method='POST',headers={'Content-Type':'application/json','Authorization':'Bearer '+action_secret})
+    with urllib.request.urlopen(req,timeout=20) as response:return json.load(response)
+plan_before=canonical_plan();assert not plan_before['frozen']
+view=task_times(canonical_id)
+canonical_update={'op_id':str(uuid.uuid4()),'kind':'update','task_id':canonical_id,'base_version':view['version'],'times':{**canonical['times'],'start':{'precision':'instant','value':instant(5400)}}}
+request('POST',operation_root,canonical_update,202);rescheduled=operation_result(canonical_update['op_id']);assert rescheduled['state']=='applied',rescheduled
+plan_after=canonical_plan();assert plan_after['instance_id']!=plan_before['instance_id'] and plan_after['revision']>plan_before['revision']
+expected_time=datetime.datetime.fromisoformat(canonical_update['times']['start']['value'])
+assert datetime.datetime.fromisoformat(plan_after['start'].replace('Z','+00:00'))==expected_time
+for _ in range(80):
+    replacement_jobs=[j for j in queue() if j['task_id']==canonical_id]
+    if all(j['state']=='superseded' for j in replacement_jobs if j['op_id'] in old_ops):break
+    time.sleep(.25)
+assert all(j['state']=='superseded' for j in replacement_jobs if j['op_id'] in old_ops),replacement_jobs
+request('POST',cp+f'/tasks/{canonical_id}/cancel',{})
 request('POST',cp+f'/tasks/{t["id"]}/cancel',{})
 wait_state(t['id'],'superseded') if any(j['state'] in ('scheduled','retry_wait','sending') for j in queue() if j['task_id']==t['id']) else None
 worker_process.terminate();worker_process.wait(timeout=10)
 current=request('GET',f'/plugins/{plugin_id}/projects/{project["id"]}/settings')
 request('PUT',f'/plugins/{plugin_id}/projects/{project["id"]}/settings',{**current['config'],'revision':current['revision'],'checkin_enabled':False})
 server.shutdown();cmd('docker','stop','paca-ci-checkin-worker')
-(verification/'checkin-pair-report.json').write_text(json.dumps({'c_source':json.loads((ROOT/'checkin-info.json').read_text())['source_sha'],'independent_plugin_action':True,'full_chinese_card':True,'stable_action_after_response_loss':True,'precise_c_window_used':True,'no_schema_sharing':True},indent=2))
+(verification/'checkin-pair-report.json').write_text(json.dumps({'c_source':json.loads((ROOT/'checkin-info.json').read_text())['source_sha'],'independent_plugin_action':True,'full_chinese_card':True,'stable_action_after_response_loss':True,'precise_c_window_used':True,'no_schema_sharing':True,'canonical_times_match_checkin':True,'before_open_reschedule_replaces_instance_and_jobs':True,'after_open_time_change_conflict':True},indent=2))
