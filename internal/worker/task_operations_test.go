@@ -32,3 +32,8 @@ func TestOperationVerifiesActualSavedFields(t *testing.T) {
 		t.Fatal("changed time accepted")
 	}
 }
+
+func TestOperationIdentityNotDependentOnRetryState(t *testing.T){
+ task:=model.Task{Custom:map[string]any{"_pushgo_operation_v1":map[string]any{"op_id":"stable-operation"}}}
+ if !operationMarker(task,"stable-operation")||operationMarker(task,"other-operation"){t.Fatal("stable lookup failed")}
+}

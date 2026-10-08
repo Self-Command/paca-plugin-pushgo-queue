@@ -116,7 +116,8 @@ func (w *Worker) applyTaskOperation(ctx context.Context) error {
 	var project, op, state, sealed string
 	var raw []byte
 	var created time.Time
-	err := w.DB.QueryRow(ctx, "UPDATE task_operations SET lease_until=NOW()+INTERVAL '90 seconds' WHERE (project_id,op_id)=(SELECT project_id,op_id FROM task_operations WHERE state IN('pending','sending','retry') AND next_attempt<=NOW() AND (lease_until IS NULL OR lease_until<NOW()) ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING project_id::text,op_id,state,body,auth_enc,created_at").Scan(&project, &op, &state, &raw, &sealed, &created)
+ var attempts int
+	err := w.DB.QueryRow(ctx, "UPDATE task_operations SET lease_until=NOW()+INTERVAL '90 seconds' WHERE (project_id,op_id)=(SELECT project_id,op_id FROM task_operations WHERE state IN('pending','sending','retry') AND next_attempt<=NOW() AND (lease_until IS NULL OR lease_until<NOW()) ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING project_id::text,op_id,state,body,auth_enc,created_at,attempts").Scan(&project, &op, &state, &raw, &sealed, &created,&attempts)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
@@ -172,7 +173,7 @@ func (w *Worker) applyTaskOperation(ctx context.Context) error {
 				return w.operationResult(ctx, project, op, "conflict", "打卡窗口已开放，时间已冻结。请取消原实例后再改期。", map[string]any{"status_code": 409, "task_id": current.ID})
 			}
 		}
-	} else if state == "sending" {
+	} else if attempts > 0 {
 		matches, findErr := w.findTaskOperation(ctx, auth, project, op)
 		if findErr != nil {
 			return w.operationResult(ctx, project, op, "sending", "正在核对任务创建结果。", nil)

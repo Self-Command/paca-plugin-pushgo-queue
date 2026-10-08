@@ -10,7 +10,6 @@ def operation_result(op):
     raise AssertionError('operation remained pending')
 def task_times(task):
     for _ in range(80):
-        r=request('GET',f'/plugins/{plugin_id}/projects/{project["id"]}/tasks/{task}/times',expected=200 if _ else 202) if False else None
         req=urllib.request.Request(base+f'/plugins/{plugin_id}/projects/{project["id"]}/tasks/{task}/times')
         with opener.open(req,timeout=20) as reply:r=json.load(reply)
         if r.get('state')=='ready':return r
@@ -28,8 +27,7 @@ try:
     view=task_times(result['task_id']);assert view['times']['start']['precision']=='instant'
     update={'op_id':str(uuid.uuid4()),'kind':'update','task_id':result['task_id'],'base_version':view['version'],'times':{**body['times'],'start':{'precision':'day','value':'2026-12-01'},'due':{'precision':'none','value':''}}}
     request('POST',operation_root,update,202);changed=operation_result(update['op_id']);assert changed['state']=='applied',changed
-    request('POST',operation_root,{**update,'op_id':str(uuid.uuid4())},202)
-    stale_body={**update,'op_id':str(uuid.uuid4())};request('POST',operation_root,stale_body,202);stale=operation_result(stale_body['op_id']);assert stale['state']=='conflict',stale
+    stale_body={**update,'op_id':str(uuid.uuid4())};request('POST',operation_root,stale_body,409)
     after=request('GET',f'/projects/{project["id"]}/tasks/{result["task_id"]}')['data'];assert after['custom_fields']['_integration_state_v1']['start_precision']=='day'
     assert not after['custom_fields']['_integration_state_v1']['start_instant']
     # A core date edit cannot retain a stale instant.

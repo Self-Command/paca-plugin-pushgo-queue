@@ -34,12 +34,19 @@ func (p *integrationPlugin) submitTaskOperation(req *plugin.Request, res *plugin
 		res.Error(401, "请先登录。")
 		return
 	}
+ if operation.Kind=="update" {
+ versions,lookupErr:=p.db.Query("SELECT version FROM task_time_views WHERE project_id=$1 AND task_id=$2",req.PathParam("projectId"),operation.TaskID)
+ if lookupErr!=nil{res.Error(503,"任务版本暂时无法读取。");return}
+ if len(versions.Rows)==1&&fmt.Sprint(versions.Rows[0][0])!=operation.BaseVersion{
+ existing,_:=p.db.Query("SELECT body_hash FROM task_operations WHERE project_id=$1 AND op_id=$2",req.PathParam("projectId"),operation.OpID)
+ if len(existing.Rows)==0{res.Error(409,"任务已发生变化，请刷新后重新确认。");return}
+ }
+ }
 	credentials := map[string]string{}
-	for _, key := range []string{"x-api-key", "authorization", "cookie"} {
-		if value := req.Headers[key]; value != "" {
-			credentials[key] = value
-		}
-	}
+ for header,value:=range req.Headers {
+ key:=strings.ToLower(header)
+ if key=="x-api-key"||key=="authorization"||key=="cookie" {credentials[key]=value}
+ }
 	if len(credentials) == 0 {
 		res.Error(401, "登录信息已失效，请重新登录。")
 		return
