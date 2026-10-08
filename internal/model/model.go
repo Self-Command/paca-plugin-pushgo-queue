@@ -210,7 +210,9 @@ func Compute(t Task, c Config, r *Rule, done bool) ([]Spec, string) {
 		loc = time.UTC
 	}
 	binding := Hash(c.GatewayURL + "\n" + c.ChannelID)
-	if m["recurring"] == true { se,de=false,false }
+	if m["recurring"] == true {
+		se, de = false, false
+	}
 	for _, item := range []struct {
 		kind, label string
 		target      *time.Time
@@ -248,12 +250,14 @@ func Precise(t Task, kind string, value *time.Time) *time.Time { return precisio
 
 // Occurrence identities are explicit on the first core create, before events fire.
 func Occurrence(t Task) bool {
- m:=Meta(t)
- extra,_:=t.Custom["_task_sync_v1"].(map[string]any)
- ref,_:=t.Custom["_integration_ref_v1"].(string)
- return strings.HasPrefix(ref,"period:") || m["occurrence_date"]!=nil && m["occurrence_date"]!="" || extra["occurrence_date"]!=nil && extra["occurrence_date"]!="" || extra["recurrence_parent"]!=nil && extra["recurrence_parent"]!=""
+	m := Meta(t)
+	extra, _ := t.Custom["_task_sync_v1"].(map[string]any)
+	ref, _ := t.Custom["_integration_ref_v1"].(string)
+	return strings.HasPrefix(ref, "period:") || m["occurrence_date"] != nil && m["occurrence_date"] != "" || extra["occurrence_date"] != nil && extra["occurrence_date"] != "" || extra["recurrence_parent"] != nil && extra["recurrence_parent"] != ""
 }
 func CreationKey(t Task) string {
- if ref,ok:=t.Custom["_integration_ref_v1"].(string);ok&&ref!="" {return "ref:"+ref}
- return "task:"+t.ID
+	if ref, ok := t.Custom["_integration_ref_v1"].(string); ok && ref != "" {
+		return "ref:" + ref
+	}
+	return "task:" + t.ID
 }

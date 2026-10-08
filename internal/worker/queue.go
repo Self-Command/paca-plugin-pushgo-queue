@@ -183,8 +183,10 @@ func (w *Worker) syncTask(ctx context.Context, s settings, t model.Task, done bo
 		return err
 	}
 	defer tx.Rollback(ctx)
-	specs,err=creationSpecs(ctx,tx,s.Project,t,specs)
-	if err!=nil{return err}
+	specs, err = creationSpecs(ctx, tx, s.Project, t, specs)
+	if err != nil {
+		return err
+	}
 	fingerprint := model.Hash(map[string]any{"specs": specs, "state": state, "card": metadata})
 	var revision int
 	var oldHash string
@@ -214,7 +216,11 @@ func (w *Worker) syncTask(ctx context.Context, s settings, t model.Task, done bo
 			jobState = "expired"
 		}
 		op := model.OpID(s.Project, t.ID, spec)
-		if spec.Kind=="created" {if err=tx.QueryRow(ctx,"SELECT op_id FROM creation_notices WHERE project_id=$1 AND task_id=$2",s.Project,t.ID).Scan(&op);err!=nil{return err}}
+		if spec.Kind == "created" {
+			if err = tx.QueryRow(ctx, "SELECT op_id FROM creation_notices WHERE project_id=$1 AND task_id=$2", s.Project, t.ID).Scan(&op); err != nil {
+				return err
+			}
+		}
 		// Preserve payload/op_id once a submit was attempted; response-loss retries must remain identical.
 		_, err = tx.Exec(ctx, "INSERT INTO jobs(project_id,task_id,kind,target_at,fire_at,expires_at,plan_revision,binding_key,op_id,payload,state,next_attempt) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$5) ON CONFLICT(op_id) DO UPDATE SET plan_revision=EXCLUDED.plan_revision,fire_at=EXCLUDED.fire_at,payload=CASE WHEN jobs.attempts=0 AND NOT jobs.action_ready THEN EXCLUDED.payload ELSE jobs.payload END,state=CASE WHEN jobs.state='gateway_accepted' THEN jobs.state WHEN jobs.expires_at<=NOW() THEN 'expired' ELSE EXCLUDED.state END,next_attempt=GREATEST(EXCLUDED.fire_at,NOW()),lease_owner=NULL,lease_until=NULL,updated_at=NOW()", s.Project, t.ID, spec.Kind, spec.Target, spec.Fire, spec.Expires, revision, spec.Binding, op, string(raw), jobState)
 		if err != nil {
