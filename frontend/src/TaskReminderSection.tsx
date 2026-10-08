@@ -29,6 +29,7 @@ export default function TaskReminderSection({projectId,taskId,canEdit=true}:{pro
  useEffect(()=>{setVersion("");setError("");setPending(localStorage.getItem(storage)||"");load().catch(e=>setError(e.message))},[projectId,taskId]);
  useEffect(()=>{const timer=setInterval(()=>api<{plan:{state:string}|null}>(`${base}/reminders`).then(r=>setStatus(r.plan?.state??"awaiting_precise_time")).catch(()=>{}),5000);return()=>clearInterval(timer)},[projectId,taskId]);
  async function save(){
+  const resuming=!!pending;
   setBusy(true);setError("");
   try{
    let op=pending;let body:unknown;
@@ -36,7 +37,7 @@ export default function TaskReminderSection({projectId,taskId,canEdit=true}:{pro
    else{const saved=localStorage.getItem(storage+":body");if(saved)body=JSON.parse(saved)}
    if(body)await api(`/projects/${projectId}/task-operations`,"POST",body);
    await waitOperation(projectId,op);localStorage.removeItem(storage);localStorage.removeItem(storage+":body");setPending("");await load();
-  }catch(e){if(typeof e==="object"&&e!==null&&(("operationState" in e&&["failed","conflict"].includes(String(e.operationState)))||("status" in e&&[400,401,403,409,422].includes(Number(e.status))))){localStorage.removeItem(storage);localStorage.removeItem(storage+":body");setPending("");await load().catch(()=>{})}setError(e instanceof Error?e.message:"任务时间暂时无法保存。")}finally{setBusy(false)}
+  }catch(e){if(typeof e==="object"&&e!==null&&(("operationState" in e&&["failed","conflict"].includes(String(e.operationState)))||(!resuming&&"status" in e&&[400,401,403,409,422].includes(Number(e.status))))){localStorage.removeItem(storage);localStorage.removeItem(storage+":body");setPending("");await load().catch(()=>{})}setError(e instanceof Error?e.message:"任务时间暂时无法保存。")}finally{setBusy(false)}
  }
  return <div className="checkin-ui"><Card className="gap-3 py-4"><CardHeader className="py-0"><CardTitle>任务时间与提醒</CardTitle></CardHeader><CardContent className="grid gap-4 max-h-[65vh] overflow-y-auto">
   <p role="status" className="text-sm text-muted-foreground">{states[status]??"正在读取安排…"}</p>

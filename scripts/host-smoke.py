@@ -141,7 +141,23 @@ with sync_playwright() as pw:
     page.get_by_role('combobox').nth(2).click()
     page.get_by_role('option',name='具体时间',exact=True).click()
     page.get_by_label('开始日期与时间',exact=True).fill('2026-12-20T09:00')
+    route_pattern='**/task-operations'
+    def lose_browser_response(route):
+        route.fetch()
+        route.abort('failed')
+    page.route(route_pattern,lose_browser_response)
     page.get_by_role('button',name='创建任务',exact=True).click()
+    page.get_by_role('button',name='查询保存结果',exact=True).wait_for(timeout=20000)
+    pending_key='pushgo-task-operation:'+project['id']
+    pending_op=page.evaluate('(key)=>localStorage.getItem(key)',pending_key);assert pending_op
+    page.unroute(route_pattern,lose_browser_response)
+    def reject_retry_login(route):route.fulfill(status=401,content_type='application/json',body='{}')
+    page.route(route_pattern,reject_retry_login)
+    page.get_by_role('button',name='查询保存结果',exact=True).click()
+    page.get_by_role('button',name='查询保存结果',exact=True).wait_for(timeout=20000)
+    assert page.evaluate('(key)=>localStorage.getItem(key)',pending_key)==pending_op,'expired login discarded an accepted creation intent'
+    page.unroute(route_pattern,reject_retry_login)
+    page.get_by_role('button',name='查询保存结果',exact=True).click()
     page.wait_for_url(f'**/projects/{project["id"]}/tasks/*',timeout=60000)
     new_id=page.url.rstrip('/').split('/')[-1]
     new_task=request('GET',f'/projects/{project["id"]}/tasks/{new_id}')['data']
@@ -163,6 +179,6 @@ request('GET',f'/plugins/{plugin_id}/health',expected=404)
 request('GET',f'/projects/{project["id"]}/tasks/{task["id"]}')
 request('GET','/plugins/com.selfcommand.tasknotes-webhook/health')
 report={'official_paca':'0.18.6','plugin':plugin_id,'migration':True,'wasm':True,'worker_hmac':True,'nonce_replay_rejected':True,'frontend_host':True,'task_crud':True,'disable_enable':True,'restart':True}
-report.update({'manifest_reload':True,'uninstall_preserves_core_and_other_plugin':True,'task_time_zone_persisted':True,'task_panel_save':True})
+report.update({'manifest_reload':True,'uninstall_preserves_core_and_other_plugin':True,'task_time_zone_persisted':True,'task_panel_save':True,'browser_response_loss_and_login_retry_preserves_operation':True})
 (verification/'host-report.json').write_text(json.dumps(report,indent=2))
 print(json.dumps({'official_paca':'0.18.6','plugin':plugin_id,'migration':True,'wasm':True,'task_crud':True,'disable_enable':True,'restart':True}))
