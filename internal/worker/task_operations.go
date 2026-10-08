@@ -116,8 +116,8 @@ func (w *Worker) applyTaskOperation(ctx context.Context) error {
 	var project, op, state, sealed string
 	var raw []byte
 	var created time.Time
- var attempts int
-	err := w.DB.QueryRow(ctx, "UPDATE task_operations SET lease_until=NOW()+INTERVAL '90 seconds' WHERE (project_id,op_id)=(SELECT project_id,op_id FROM task_operations WHERE state IN('pending','sending','retry') AND next_attempt<=NOW() AND (lease_until IS NULL OR lease_until<NOW()) ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING project_id::text,op_id,state,body,auth_enc,created_at,attempts").Scan(&project, &op, &state, &raw, &sealed, &created,&attempts)
+	var attempts int
+	err := w.DB.QueryRow(ctx, "UPDATE task_operations SET lease_until=NOW()+INTERVAL '90 seconds' WHERE (project_id,op_id)=(SELECT project_id,op_id FROM task_operations WHERE state IN('pending','sending','retry') AND next_attempt<=NOW() AND (lease_until IS NULL OR lease_until<NOW()) ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING project_id::text,op_id,state,body,auth_enc,created_at,attempts").Scan(&project, &op, &state, &raw, &sealed, &created, &attempts)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
@@ -277,7 +277,7 @@ func (w *Worker) completeTaskOperation(ctx context.Context, project, op string, 
 		var existingRule model.Rule
 		_ = json.Unmarshal(existing, &existingRule)
 		if model.Hash(existingRule) != model.Hash(rule) {
-			tag, err := w.DB.Exec(ctx, "INSERT INTO task_rules(project_id,task_id,config) SELECT $1,$2,$3::jsonb WHERE $4=0 ON CONFLICT(project_id,task_id) DO UPDATE SET config=EXCLUDED.config,revision=task_rules.revision+1,updated_at=clock_timestamp() WHERE task_rules.revision=$4", project, t.ID, string(raw), flags.Revision)
+			tag, err := w.DB.Exec(ctx, "INSERT INTO task_rules(project_id,task_id,config) SELECT $1,$2,$3::jsonb WHERE $4=0 OR EXISTS(SELECT 1 FROM task_rules WHERE project_id=$1 AND task_id=$2 AND revision=$4) ON CONFLICT(project_id,task_id) DO UPDATE SET config=EXCLUDED.config,revision=task_rules.revision+1,updated_at=clock_timestamp() WHERE task_rules.revision=$4", project, t.ID, string(raw), flags.Revision)
 			if err != nil {
 				return err
 			}
