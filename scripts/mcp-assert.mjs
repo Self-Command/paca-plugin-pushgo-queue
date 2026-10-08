@@ -24,10 +24,15 @@ for(let i=0;i<3;i++){
  const repeated=await registry.handleToolCall("pushgo_create_task",body,config);if(repeated?.isError||JSON.parse(repeated.content[0].text).task_id!==result.task_id)throw new Error("MCP repeated creation changed task");
  const deniedCreate=await registry.handleToolCall("pushgo_create_task",{...body,op_id:crypto.randomUUID()},{...config,apiKey:input.outsider_key});if(!deniedCreate?.isError)throw new Error("MCP create escaped project permissions");
 }
+const beforeChange=await registry.handleToolCall("pushgo_get_reminders",args,config);
+const beforeView=JSON.parse(beforeChange.content[0].text).task_times;
+const changedTime=new Date(Date.now()+172800000).toISOString();
+const changed=await registry.handleToolCall("pushgo_set_task_times",{...args,op_id:crypto.randomUUID(),base_version:beforeView.version,times:{...beforeView.times,start:{precision:"instant",value:changedTime}}},config);
+if(changed?.isError||JSON.parse(changed.content[0].text).state!=="applied")throw new Error(`MCP canonical update failed: ${JSON.stringify(changed)}`);
 // A date-only create must remain date-only and never be reported as precise.
 const dayBody={...createArgs,op_id:crypto.randomUUID(),title:"AI 仅日期任务",times:{...createArgs.times,start:{precision:"day",value:"2026-12-25"}}};
 const dayResult=await registry.handleToolCall("pushgo_create_task",dayBody,config);if(dayResult?.isError)throw new Error(JSON.stringify(dayResult));
 const dayTask=JSON.parse(dayResult.content[0].text);if(dayTask.result?.times?.start?.precision!=="day")throw new Error("Date-only AI task fabricated a precise time");
 const denied=await registry.handleToolCall("pushgo_get_delivery_status",args,{...config,apiKey:input.outsider_key});
 if(!denied?.isError)throw new Error("MCP escaped caller project permissions");
-await writeFile("verification/mcp-report.json",JSON.stringify({official_loader_sha:sha,six_tools_registered:true,authorized_query_and_set:true,stale_revision_rejected:true,caller_permission_retained:true,batch_precise_create:true,repeated_create_once:true,create_permission_retained:true},null,2));
+await writeFile("verification/mcp-report.json",JSON.stringify({official_loader_sha:sha,six_tools_registered:true,authorized_query_and_set:true,stale_revision_rejected:true,caller_permission_retained:true,batch_precise_create:true,repeated_create_once:true,create_permission_retained:true,canonical_update_tool:true,date_only_truthful:true},null,2));
