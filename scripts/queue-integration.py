@@ -211,6 +211,8 @@ for _ in range(2):
     time.sleep(2)
 assert len(accepted)==prior+1,'Reconciliation replayed a logical creation'
 (verification/'creation-identity-report.json').write_text(json.dumps({'one_mother_announcement':True,'thirty_one_periods_without_created_alert':True,'setting_and_update_no_replay':True}))
+setting=request('GET',f'/plugins/{plugin_id}/projects/{project["id"]}/settings')
+request('PUT',f'/plugins/{plugin_id}/projects/{project["id"]}/settings',{**cfg,'revision':setting['revision'],'created_push':False,'password':''})
 worker_process.terminate();worker_process.wait(timeout=10)
 log.close();server.shutdown()
 (verification/'queue-report.json').write_text(json.dumps({'http_429_503_same_operation_retry':True,'retry_after_respected':True,'crash_recovers_expired_lease':True,'new_lease_generation':True,'concurrent_workers_no_extra_submissions':True,'delete_cancels':True,'archive_cancels':True,'recurrence_not_expanded':True,'cleared_date_invalidates_confirmation':True,'native_date_requires_confirmation':True,'four_levels':True,'absolute_ttl':True,'same_op_id_after_lost_response':True,'reschedule_supersedes':True,'restart_no_duplicate':True,'complete_cancels':True,'expired_no_delivery':True,'project_disable_enable_recovers':True,'host_disable_pauses_gateway':True},indent=2))
