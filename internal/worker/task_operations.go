@@ -367,5 +367,14 @@ func (w *Worker) refreshTaskTime(ctx context.Context) error {
 	if err = w.call(ctx, "GET", "/projects/"+project+"/tasks/"+task, nil, &t); err != nil {
 		return err
 	}
-	return w.cacheTaskTimes(ctx, project, t, nil, "")
+	frozen := false
+	settings, settingsErr := w.loadSettings(ctx, project)
+	if settingsErr == nil && settings.Config.CheckinEnabled {
+		var state checkinPlan
+		if err = w.checkinCall(ctx, "/internal/v1/times/freeze", map[string]string{"project_id": project, "task_id": task}, &state); err != nil {
+			return w.cacheTaskTimes(ctx, project, t, nil, "打卡窗口暂时无法核对，保存时会重新检查。")
+		}
+		frozen = state.Enabled && state.Frozen
+	}
+	return w.cacheTaskTimes(ctx, project, t, &frozen, "")
 }

@@ -97,9 +97,15 @@ for _ in range(80):
 assert all(j['state']=='superseded' for j in replacement_jobs if j['op_id'] in old_ops),replacement_jobs
 request('POST',cp+f'/tasks/{canonical_id}/cancel',{})
 request('POST',cp+f'/tasks/{t["id"]}/cancel',{})
+for _ in range(40):
+    refreshed=task_times(t['id'])
+    if refreshed['frozen'] is False:break
+    time.sleep(.5)
+assert refreshed['frozen'] is False,'explicit cancellation did not refresh the window lock'
+
 wait_state(t['id'],'superseded') if any(j['state'] in ('scheduled','retry_wait','sending') for j in queue() if j['task_id']==t['id']) else None
 worker_process.terminate();worker_process.wait(timeout=10)
 current=request('GET',f'/plugins/{plugin_id}/projects/{project["id"]}/settings')
 request('PUT',f'/plugins/{plugin_id}/projects/{project["id"]}/settings',{**current['config'],'revision':current['revision'],'checkin_enabled':False})
 server.shutdown();cmd('docker','stop','paca-ci-checkin-worker')
-(verification/'checkin-pair-report.json').write_text(json.dumps({'c_source':json.loads((ROOT/'checkin-info.json').read_text())['source_sha'],'independent_plugin_action':True,'full_chinese_card':True,'stable_action_after_response_loss':True,'precise_c_window_used':True,'no_schema_sharing':True,'canonical_times_match_checkin':True,'before_open_reschedule_replaces_instance_and_jobs':True,'after_open_time_change_conflict':True},indent=2))
+(verification/'checkin-pair-report.json').write_text(json.dumps({'c_source':json.loads((ROOT/'checkin-info.json').read_text())['source_sha'],'independent_plugin_action':True,'full_chinese_card':True,'stable_action_after_response_loss':True,'precise_c_window_used':True,'no_schema_sharing':True,'canonical_times_match_checkin':True,'before_open_reschedule_replaces_instance_and_jobs':True,'after_open_time_change_conflict':True,'cache_refresh_preserves_and_rechecks_frozen_window':True,'explicit_cancel_unlocks_editor':True},indent=2))
