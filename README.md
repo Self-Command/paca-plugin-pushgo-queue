@@ -1,12 +1,12 @@
 # PushGo 推送队列
 
 An independent Apache-2.0 plugin for **official Paca v0.18.6**. It can operate without TaskNotes.
-The current phase-2 candidate is undergoing Action acceptance. Earlier phase-0 releases are scaffolds.
+Only releases whose complete Actions workflow succeeds are deployable. Earlier scaffold artifacts are historical.
 
 ## Behavior
 
 - Project channel binding, encrypted channel password, default start/due lead minutes and configurable priority mapping.
-- Generic precise-time confirmation in task details and three caller-scoped MCP tools.
+- A dedicated timed-task creation page, canonical time editing in official task details and six caller-scoped MCP tools.
 - Native Paca date-only values remain pending until confirmed. Paca uses SQL DATE: accurate integration instants live in metadata and must match the recorded current calendar day and timezone.
 - Persistent plans and jobs, transactional revision replacement, leases with owner/generation, stable logical `op_id` and absolute expiry.
 - Task events prompt reconciliation; a complete official REST listing runs periodically. Incomplete listings never cancel unseen tasks.
@@ -32,13 +32,13 @@ against the official gateway using `PACA_GATEWAY_URL`, so the official MCP loade
 Keep the manifest, WASM, migrations, frontend, MCP and worker from the same verified source SHA.
 The worker rejects a mismatched host source or schema, even when semantic versions match.
 
-1. Create a restricted integration account with task/status read permission in intended projects, and create its personal API key.
+1. Create a restricted integration account with project-scoped task read/write and status read permission in intended projects, and create its personal API key.
 2. Grant a dedicated PostgreSQL role access only to `plugin_data_com_selfcommand_pushgo_queue` and its sequences.
 3. POST `{}` as an authorized administrator to `/api/v1/plugins/com.selfcommand.pushgo-queue/admin/worker-credential`.
    Save its one-time secret to a restricted runtime file.
 4. Configure the exact worker image with the files below. Mount secrets read-only and readable by its nonroot UID.
 5. In **PushGo 推送队列**, bind the Gateway URL, copied channel ID and password. The channel name is display-only.
-6. For native Paca/API/AI tasks, open **PushGo 提醒** or use MCP to confirm exact instants. Task date changes invalidate confirmation.
+6. For native Paca/API/AI tasks, use **新建定时任务**, **任务时间与提醒**, or `pushgo_create_task` / `pushgo_set_task_times`. Core date edits discard unconfirmed old time-of-day.
 
 ```dotenv
 PACA_API_URL=http://api:8080
@@ -56,16 +56,19 @@ Do not give the worker administrator credentials or access to core database tabl
 
 ## MCP tools
 
-- `pushgo_get_reminders`: rule, revision and plan status.
+- `pushgo_create_task`: durable task creation with exact times and stable `op_id`.
+- `pushgo_set_task_times`: canonical task times with the base version.
+- `pushgo_get_task_operation`: confirm actual result after timeout; never create with a new ID blindly.
+- `pushgo_get_reminders`: rule, revision, canonical times and plan status.
 - `pushgo_set_reminders`: precise start/due times, enable flags and lead minutes. Requires the previous rule revision.
 - `pushgo_get_delivery_status`: recent jobs and acceptance state.
 
-Each tool first reads the task with the **MCP caller's own personal API key**, then calls permission-protected
+Queries and updates first read the task with the **MCP caller's own personal API key**, then calls permission-protected
 plugin routes with the same key. It never substitutes the worker's identity. Unknown or inaccessible tasks fail.
 
 ## Limits and recovery
 
-Recurring schedule expansion and statistics are not supported. Check-in rules, private photos and Obsidian sync belong to independent plugins; this plugin provides their optional reminder action.
+Recurring expansion belongs to A. This queue suppresses all generated-period creation notifications and schedules each period independently; a mother may have one creation notice, never start/end reminders. Statistics are not supported. Check-in rules, private photos and Obsidian sync belong to independent plugins; this plugin provides their optional reminder action.
 Generic integration metadata uses `_integration_state_v1` with `start_precision`, `due_precision`,
 `start_instant` / `due_instant`, matching `start_core_date` / `due_core_date` and `timezone`, `archived` and `recurring` values; this is a public task field,
 not a dependency on the TaskNotes plugin's private schema.
@@ -101,3 +104,9 @@ See the Action's `host-verification` report for actual results and remaining dev
 ## WASM 凭据与重载
 
 WASM 后端的随机编号、配对令牌、worker 凭据及 AES-GCM nonce 使用原生 PostgreSQL 的随机 UUID 组合获取新鲜随机数据，避免模块状态恢复后复用历史序列。无需额外数据库扩展；原密文格式保持兼容。原生 Go worker 保留操作系统随机源。Action 包含错误时拒绝生成凭据的检查，打卡插件另验收连续配对、撤销后重新配对、模块重载与宿主重启。
+
+## Unified time and durable task operations
+
+See [任务时间与提醒](docs/task-times.md). The existing worker processes task operations; no container is added. The original caller credentials are encrypted for at most five minutes and cleared on terminal state. Caller task-write and plugin-manage permissions are rechecked before writes.
+Creation markers and times are included in the first official create. Unknown outcomes are reconciled by marker, never blindly retried as new creations. JSON payload conflicts return HTTP 409; base-version conflicts are checked before acceptance and again against the fresh task. Async conflicts remain queryable as `state=conflict` with `result.status_code=409`.
+The core REST API has no cross-plugin compare-and-swap: writes are field patches with custom-map preservation, preflight validation and actual-result verification. Legacy time disagreements/frozen windows are visible for review.

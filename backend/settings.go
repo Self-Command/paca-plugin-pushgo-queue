@@ -156,7 +156,7 @@ func (p *integrationPlugin) setReminders(req *plugin.Request, res *plugin.Respon
 	if input.DueMinutes != nil {
 		times.DueMinutes = *input.DueMinutes
 	}
-	operation := model.TaskOperation{OpID: "reminder:" + model.Hash(input), Kind: "update", TaskID: input.BaseTask.ID, BaseVersion: model.TimeVersion(input.BaseTask), Times: &times, Reminders: &model.ReminderFlags{Revision: input.Revision, Enabled: input.Enabled, StartEnabled: input.StartEnabled, DueEnabled: input.DueEnabled}}
+	operation := model.TaskOperation{OpID: "reminder_" + model.Hash(input), Kind: "update", TaskID: input.BaseTask.ID, BaseVersion: model.TimeVersion(input.BaseTask), Times: &times, Reminders: &model.ReminderFlags{Revision: input.Revision, Enabled: input.Enabled, StartEnabled: input.StartEnabled, DueEnabled: input.DueEnabled}}
 	raw, _ := json.Marshal(operation)
 	copyRequest := *req
 	copyRequest.Body = raw

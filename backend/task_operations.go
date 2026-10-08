@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+ "net/url"
 	"strings"
 
 	plugin "github.com/Paca-AI/plugin-sdk-go"
@@ -81,7 +82,8 @@ func (p *integrationPlugin) submitTaskOperation(req *plugin.Request, res *plugin
 }
 
 func (p *integrationPlugin) taskOperation(req *plugin.Request, res *plugin.Response) {
-	rows, err := p.db.Query("SELECT state,task_id::text,result::text,error FROM task_operations WHERE project_id=$1 AND op_id=$2", req.PathParam("projectId"), req.PathParam("opId"))
+ opID,decodeErr:=url.PathUnescape(req.PathParam("opId"));if decodeErr!=nil{res.Error(400,"操作标识无效。");return}
+	rows, err := p.db.Query("SELECT state,task_id::text,result::text,error FROM task_operations WHERE project_id=$1 AND op_id=$2", req.PathParam("projectId"), opID)
 	if err != nil {
 		res.Error(503, "任务操作暂时无法读取。")
 		return
@@ -95,7 +97,7 @@ func (p *integrationPlugin) taskOperation(req *plugin.Request, res *plugin.Respo
 	if row[2] != nil {
 		_ = json.Unmarshal([]byte(fmt.Sprint(row[2])), &result)
 	}
-	res.JSON(200, map[string]any{"op_id": req.PathParam("opId"), "state": row[0], "task_id": row[1], "result": result, "error": row[3]})
+	res.JSON(200, map[string]any{"op_id": opID, "state": row[0], "task_id": row[1], "result": result, "error": row[3]})
 }
 
 func (p *integrationPlugin) taskTimes(req *plugin.Request, res *plugin.Response) {
