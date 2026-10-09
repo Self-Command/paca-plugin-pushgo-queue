@@ -27,11 +27,31 @@ func (p *integrationPlugin) submitTaskOperation(req *plugin.Request, res *plugin
 		res.Error(400, err.Error())
 		return
 	}
+	// An already accepted operation keeps its original result even after project settings change.
+	stored, lookupErr := p.db.Query("SELECT body_hash,state,task_id::text FROM task_operations WHERE project_id=$1 AND op_id=$2", req.PathParam("projectId"), operation.OpID)
+	if lookupErr != nil {
+		res.Error(503, "任务操作暂时无法读取。")
+		return
+	}
+	if len(stored.Rows) == 1 {
+		if fmt.Sprint(stored.Rows[0][0]) != model.Hash(operation) {
+			res.Error(409, "相同操作标识不能提交不同内容。")
+			return
+		}
+		res.JSON(202, map[string]any{"op_id": operation.OpID, "state": stored.Rows[0][1], "task_id": stored.Rows[0][2]})
+		return
+	}
 	if operation.Times != nil {
 		rows, err := p.db.Query("SELECT COALESCE(config->>'checkin_enabled','false') FROM project_settings WHERE project_id=$1", req.PathParam("projectId"))
-		if err != nil { res.Error(503, "打卡设置暂时无法核对。"); return }
+		if err != nil {
+			res.Error(503, "打卡设置暂时无法核对。")
+			return
+		}
 		checkin := len(rows.Rows) == 1 && fmt.Sprint(rows.Rows[0][0]) == "true"
-		if err := operation.Times.ValidateCheckinLead(checkin); err != nil { res.Error(400, err.Error()); return }
+		if err := operation.Times.ValidateCheckinLead(checkin); err != nil {
+			res.Error(400, err.Error())
+			return
+		}
 	}
 	if operation.TaskID != "" && !uuidPattern.MatchString(operation.TaskID) || operation.StatusID != nil && *operation.StatusID != "" && !uuidPattern.MatchString(*operation.StatusID) {
 		res.Error(400, "任务或状态标识无效。")

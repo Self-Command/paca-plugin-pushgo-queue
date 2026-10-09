@@ -185,7 +185,9 @@ func (w *Worker) applyTaskOperation(ctx context.Context) error {
 	}
 	if request.Times != nil {
 		settings, settingsErr := w.loadSettings(ctx, project)
-		if settingsErr != nil && !errors.Is(settingsErr, pgx.ErrNoRows) { return settingsErr }
+		if settingsErr != nil && !errors.Is(settingsErr, pgx.ErrNoRows) {
+			return settingsErr
+		}
 		if err := request.Times.ValidateCheckinLead(settings.Config.CheckinEnabled); err != nil {
 			return w.operationResult(ctx, project, op, "failed", err.Error(), nil)
 		}
