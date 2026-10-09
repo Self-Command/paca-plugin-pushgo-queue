@@ -2,7 +2,7 @@
 import hashlib, io, json, pathlib, tarfile, urllib.request,urllib.error,time
 
 root=pathlib.Path(__file__).resolve().parent.parent
-release='https://github.com/Self-Command/paca-plugin-tasknotes-webhook/releases/download/v0.1.0-dev.87/'
+release='https://github.com/Self-Command/paca-plugin-tasknotes-webhook/releases/download/v0.1.0-dev.88/'
 def get(name):
     for attempt in range(90):
         try:
@@ -15,8 +15,8 @@ package=get('plugin-install.tar.gz')
 expected=next(line.split()[0] for line in checksums.splitlines() if line.endswith('plugin-install.tar.gz'))
 assert hashlib.sha256(package).hexdigest()==expected
 info=json.loads(get('build-info.json'))
-assert info['source_sha']=='1d7574924e469ed21f89c8f2e1576963de23203f'
-info['release']='v0.1.0-dev.87'
+assert info['source_sha']=='6999267b0c7aee6acf875450681a172917917953'
+info['release']='v0.1.0-dev.88'
 with tarfile.open(fileobj=io.BytesIO(package),mode='r:gz') as archive:
     archive.extractall(root/'release',filter='data')
 (root/'pair-image.txt').write_bytes(get('image-digest.txt'))
