@@ -39,7 +39,7 @@ export default function TaskReminderSection({projectId,taskId,canEdit=true}:{pro
    await waitOperation(projectId,op);localStorage.removeItem(storage);localStorage.removeItem(storage+":body");setPending("");await load();
   }catch(e){if(typeof e==="object"&&e!==null&&(("operationState" in e&&["failed","conflict"].includes(String(e.operationState)))||(!resuming&&"status" in e&&[400,401,403,409,422].includes(Number(e.status))))){localStorage.removeItem(storage);localStorage.removeItem(storage+":body");setPending("");await load().catch(()=>{})}setError(e instanceof Error?e.message:"任务时间暂时无法保存。")}finally{setBusy(false)}
  }
- return <div className="checkin-ui"><Card className="gap-3 py-4"><CardHeader className="py-0"><CardTitle>任务时间与提醒</CardTitle></CardHeader><CardContent className="grid gap-4 max-h-[65vh] overflow-y-auto">
+ return <div id="task-times-reminders" className="checkin-ui"><Card className="gap-3 py-4"><CardHeader className="py-0"><CardTitle>任务时间与提醒</CardTitle></CardHeader><CardContent className="grid gap-4 max-h-[65vh] overflow-y-auto">
   <p role="status" className="text-sm text-muted-foreground">{states[status]??"正在读取安排…"}</p>
   <p className="text-sm text-muted-foreground">任务同步、推送和打卡使用以下时间。仅填写日期不会安排定时提醒。</p>
   {frozen&&<p className="text-sm text-muted-foreground">打卡窗口已开放，时间已冻结。请取消原实例后再改期。</p>}

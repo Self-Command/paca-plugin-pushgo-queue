@@ -183,6 +183,13 @@ func (w *Worker) applyTaskOperation(ctx context.Context) error {
 		}
 		return w.operationResult(ctx, project, op, "uncertain", "创建结果需要核对，已停止重复创建。", map[string]any{"matches": len(matches)})
 	}
+	if request.Times != nil {
+		settings, settingsErr := w.loadSettings(ctx, project)
+		if settingsErr != nil && !errors.Is(settingsErr, pgx.ErrNoRows) { return settingsErr }
+		if err := request.Times.ValidateCheckinLead(settings.Config.CheckinEnabled); err != nil {
+			return w.operationResult(ctx, project, op, "failed", err.Error(), nil)
+		}
+	}
 	if request.Reminders != nil {
 		var revision int
 		ruleErr := w.DB.QueryRow(ctx, "SELECT revision FROM task_rules WHERE project_id=$1 AND task_id=$2", project, request.TaskID).Scan(&revision)

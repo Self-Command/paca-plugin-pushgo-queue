@@ -46,3 +46,15 @@ func TestUnifiedTimesRejectInvertedAndNonexistentTimes(t *testing.T) {
 		}
 	}
 }
+
+func TestZeroLeadOnlyAllowedWithoutCheckin(t *testing.T) {
+ value := TaskTimes{Start:TimeValue{Precision:"instant"}, Due:TimeValue{Precision:"instant"}, StartMinutes:0, DueMinutes:10}
+ if value.ValidateCheckinLead(true) == nil { t.Fatal("empty start window accepted") }
+ if value.ValidateCheckinLead(false) != nil { t.Fatal("ordinary zero-lead reminder removed") }
+ value.StartMinutes=10;value.DueMinutes=0
+ if value.ValidateCheckinLead(true) == nil { t.Fatal("empty due window accepted") }
+ value.DueMinutes=1
+ if value.ValidateCheckinLead(true) != nil { t.Fatal("valid check-in lead rejected") }
+ value.Start=TimeValue{Precision:"day"};value.Due=TimeValue{Precision:"none"};value.StartMinutes=0;value.DueMinutes=0
+ if value.ValidateCheckinLead(true) != nil { t.Fatal("date-only task does not have a check-in window") }
+}

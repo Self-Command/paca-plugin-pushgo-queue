@@ -135,3 +135,11 @@ func TimesOf(t Task) TaskTimes {
 // Includes the full custom map to detect concurrent unrelated custom-field edits
 // before issuing the official whole-map PATCH. It is not a cross-system CAS.
 func TimeVersion(t Task) string { return Hash(t) }
+
+// Zero lead remains valid for ordinary reminders, but creates an empty strict check-in window.
+func (t TaskTimes) ValidateCheckinLead(enabled bool) error {
+ if enabled && ((t.Start.Precision == "instant" && t.StartMinutes < 1) || (t.Due.Precision == "instant" && t.DueMinutes < 1)) {
+  return errors.New("拍照打卡必须提前至少1分钟提醒，建议提前10分钟；0分钟会导致收到时已截止。")
+ }
+ return nil
+}

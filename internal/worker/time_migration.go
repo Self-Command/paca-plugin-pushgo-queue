@@ -55,6 +55,7 @@ func (w *Worker) migrateRuleTimes(ctx context.Context, s settings, t model.Task,
 	if r.DueMinutes != nil {
 		times.DueMinutes = *r.DueMinutes
 	}
+	if err := times.ValidateCheckinLead(s.Config.CheckinEnabled); err != nil { return t, r, err }
 	patch, err := model.TimePatch(t, times)
 	if err != nil {
 		return t, r, err

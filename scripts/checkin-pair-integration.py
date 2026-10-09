@@ -78,6 +78,9 @@ request('POST',operation_root,frozen_update,202)
 frozen_result=operation_result(frozen_update['op_id'])
 assert frozen_result['state']=='conflict' and frozen_result['result']['status_code']==409,frozen_result
 canonical={'op_id':str(uuid.uuid4()),'kind':'create','title':'统一时间与打卡联调','times':{'start':{'precision':'instant','value':instant(3600)},'due':{'precision':'instant','value':instant(7200)},'timezone':'Asia/Shanghai','start_minutes':10,'due_minutes':10}}
+zero_op={**canonical,'op_id':str(uuid.uuid4()),'title':'空打卡窗口不得创建','times':{**canonical['times'],'start_minutes':0}}
+request('POST',operation_root,zero_op,400)
+assert not any(x['title']==zero_op['title'] for x in request('GET',f'/projects/{project["id"]}/tasks?page_size=200')['data']['items'])
 request('POST',operation_root,canonical,202);canonical_result=operation_result(canonical['op_id']);assert canonical_result['state']=='applied',canonical_result
 canonical_id=canonical_result['task_id'];old_jobs=wait_state(canonical_id,'scheduled');old_ops={j['op_id'] for j in old_jobs if j['state']=='scheduled'}
 def canonical_plan():
@@ -108,4 +111,4 @@ worker_process.terminate();worker_process.wait(timeout=10)
 current=request('GET',f'/plugins/{plugin_id}/projects/{project["id"]}/settings')
 request('PUT',f'/plugins/{plugin_id}/projects/{project["id"]}/settings',{**current['config'],'revision':current['revision'],'checkin_enabled':False})
 server.shutdown();cmd('docker','stop','paca-ci-checkin-worker')
-(verification/'checkin-pair-report.json').write_text(json.dumps({'c_source':json.loads((ROOT/'checkin-info.json').read_text())['source_sha'],'independent_plugin_action':True,'full_chinese_card':True,'stable_action_after_response_loss':True,'precise_c_window_used':True,'no_schema_sharing':True,'canonical_times_match_checkin':True,'before_open_reschedule_replaces_instance_and_jobs':True,'after_open_time_change_conflict':True,'cache_refresh_preserves_and_rechecks_frozen_window':True,'explicit_cancel_unlocks_editor':True},indent=2))
+(verification/'checkin-pair-report.json').write_text(json.dumps({'c_source':json.loads((ROOT/'checkin-info.json').read_text())['source_sha'],'zero_lead_create_rejected_without_task':True,'independent_plugin_action':True,'full_chinese_card':True,'stable_action_after_response_loss':True,'precise_c_window_used':True,'no_schema_sharing':True,'canonical_times_match_checkin':True,'before_open_reschedule_replaces_instance_and_jobs':True,'after_open_time_change_conflict':True,'cache_refresh_preserves_and_rechecks_frozen_window':True,'explicit_cancel_unlocks_editor':True},indent=2))

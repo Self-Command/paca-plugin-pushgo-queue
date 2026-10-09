@@ -27,6 +27,12 @@ func (p *integrationPlugin) submitTaskOperation(req *plugin.Request, res *plugin
 		res.Error(400, err.Error())
 		return
 	}
+	if operation.Times != nil {
+		rows, err := p.db.Query("SELECT COALESCE(config->>'checkin_enabled','false') FROM project_settings WHERE project_id=$1", req.PathParam("projectId"))
+		if err != nil { res.Error(503, "打卡设置暂时无法核对。"); return }
+		checkin := len(rows.Rows) == 1 && fmt.Sprint(rows.Rows[0][0]) == "true"
+		if err := operation.Times.ValidateCheckinLead(checkin); err != nil { res.Error(400, err.Error()); return }
+	}
 	if operation.TaskID != "" && !uuidPattern.MatchString(operation.TaskID) || operation.StatusID != nil && *operation.StatusID != "" && !uuidPattern.MatchString(*operation.StatusID) {
 		res.Error(400, "任务或状态标识无效。")
 		return
